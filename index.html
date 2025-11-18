@@ -76,6 +76,22 @@
         
         .btn-active { background: #3b82f6 !important; }
         
+        .btn-edit { background: #8b5cf6; color: white; }
+        .btn-edit:hover:not(:disabled) { background: #7c3aed; }
+        
+        .edit-mode-indicator {
+            background: #8b5cf6;
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            display: none;
+        }
+        
+        .edit-mode-indicator.show {
+            display: block;
+        }
+        
         .status {
             font-size: 0.75rem;
             color: #999;
