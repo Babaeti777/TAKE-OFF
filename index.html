@@ -78,7 +78,7 @@
         
         .btn-edit { background: #8b5cf6; color: white; }
         .btn-edit:hover:not(:disabled) { background: #7c3aed; }
-        
+
         .edit-mode-indicator {
             background: #8b5cf6;
             color: white;
@@ -86,6 +86,7 @@
             border-radius: 4px;
             font-size: 0.875rem;
             display: none;
+            margin-bottom: 0.5rem;
         }
         
         .edit-mode-indicator.show {
@@ -333,12 +334,18 @@
                 <button class="btn-secondary" onclick="zoom(0.77)" disabled id="zoomOutBtn">
                     🔍- Zoom Out
                 </button>
+                <button class="btn-edit" id="editBtn" onclick="toggleEditMode()" disabled>
+                    ✏️ Edit Points
+                </button>
                 <button class="btn-success" onclick="exportCSV()" disabled id="exportBtn">
                     💾 Export CSV
                 </button>
                 <button class="btn-danger" onclick="clearAll()" disabled id="clearBtn">
                     🗑️ Clear All
                 </button>
+            </div>
+            <div class="edit-mode-indicator" id="editIndicator">
+                ✏️ Edit mode active — click measurement points to reposition them.
             </div>
             <div class="status">
                 <span>Zoom: <span id="zoomLevel">100</span>%</span>
@@ -415,6 +422,10 @@
             offset: { x: 50, y: 50 },
             dragging: false,
             dragStart: { x: 0, y: 0 },
+            editMode: false,
+            editingHandle: false,
+            activeMeasurement: null,
+            activeHandle: null,
             pdfDoc: null,
             currentPage: 1,
             totalPages: 1
@@ -560,58 +571,138 @@
         canvas.addEventListener('mouseup', handleMouseUp);
         canvas.addEventListener('mouseleave', handleMouseUp);
         
-        function handleMouseDown(e) {
+        function getEventCanvasPosition(e) {
             const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            
-            if (state.tool === 'move') {
-                state.dragging = true;
-                state.dragStart = { x: x - state.offset.x, y: y - state.offset.y };
-            } else if (state.image) {
-                const canvasX = (x - state.offset.x) / state.scale;
-                const canvasY = (y - state.offset.y) / state.scale;
-                state.startPoint = { x: canvasX, y: canvasY };
-                state.drawing = true;
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            const pixelX = (e.clientX - rect.left) * scaleX;
+            const pixelY = (e.clientY - rect.top) * scaleY;
+            const canvasX = (pixelX - state.offset.x) / state.scale;
+            const canvasY = (pixelY - state.offset.y) / state.scale;
+            return { pixelX, pixelY, canvasX, canvasY };
+        }
+
+        function findHandle(x, y) {
+            const threshold = 10 / state.scale;
+            for (let i = state.measurements.length - 1; i >= 0; i--) {
+                const m = state.measurements[i];
+                const points = [
+                    { x: m.x1, y: m.y1, handle: 'start' },
+                    { x: m.x2, y: m.y2, handle: 'end' }
+                ];
+
+                for (const point of points) {
+                    const dx = x - point.x;
+                    const dy = y - point.y;
+                    if (Math.sqrt(dx * dx + dy * dy) <= threshold) {
+                        return { index: i, handle: point.handle };
+                    }
+                }
+            }
+            return null;
+        }
+
+        function recalculateMeasurement(measurement) {
+            const dx = measurement.x2 - measurement.x1;
+            const dy = measurement.y2 - measurement.y1;
+
+            if (measurement.type === 'linear') {
+                const pixels = Math.sqrt(dx * dx + dy * dy);
+                const length = pixels * state.scaleFactor;
+                measurement.value = length;
+                measurement.label = length.toFixed(2) + ' ft';
+            } else {
+                const width = Math.abs(dx) * state.scaleFactor;
+                const height = Math.abs(dy) * state.scaleFactor;
+                const area = width * height;
+                measurement.value = area;
+                measurement.label = area.toFixed(2) + ' sf';
             }
         }
-        
+
+        function handleMouseDown(e) {
+            if (!state.image) return;
+
+            const { pixelX, pixelY, canvasX, canvasY } = getEventCanvasPosition(e);
+
+            if (state.editMode) {
+                const handle = findHandle(canvasX, canvasY);
+                if (handle) {
+                    state.editingHandle = true;
+                    state.activeMeasurement = handle.index;
+                    state.activeHandle = handle.handle;
+                    return;
+                }
+
+                if (state.tool !== 'move') {
+                    return;
+                }
+            }
+
+            if (state.tool === 'move') {
+                state.dragging = true;
+                state.dragStart = { x: pixelX, y: pixelY };
+                state.originalOffset = { ...state.offset };
+            } else {
+                state.drawing = true;
+                state.startPoint = { x: canvasX, y: canvasY };
+                draw();
+            }
+        }
+
         function handleMouseMove(e) {
-            const rect = canvas.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            
+            const { pixelX, pixelY, canvasX, canvasY } = getEventCanvasPosition(e);
+
+            if (state.editingHandle && state.activeMeasurement !== null) {
+                const measurement = state.measurements[state.activeMeasurement];
+                if (measurement) {
+                    if (state.activeHandle === 'start') {
+                        measurement.x1 = canvasX;
+                        measurement.y1 = canvasY;
+                    } else {
+                        measurement.x2 = canvasX;
+                        measurement.y2 = canvasY;
+                    }
+                    recalculateMeasurement(measurement);
+                    draw();
+                }
+                return;
+            }
+
             if (state.dragging) {
                 state.offset = {
-                    x: x - state.dragStart.x,
-                    y: y - state.dragStart.y
+                    x: state.originalOffset.x + (pixelX - state.dragStart.x),
+                    y: state.originalOffset.y + (pixelY - state.dragStart.y)
                 };
                 draw();
             } else if (state.drawing) {
-                const canvasX = (x - state.offset.x) / state.scale;
-                const canvasY = (y - state.offset.y) / state.scale;
                 draw();
                 drawPreview(canvasX, canvasY);
             }
         }
-        
+
         function handleMouseUp(e) {
+            if (state.editingHandle) {
+                state.editingHandle = false;
+                state.activeHandle = null;
+                state.activeMeasurement = null;
+                updateUI();
+                draw();
+                return;
+            }
+
             if (state.dragging) {
                 state.dragging = false;
             } else if (state.drawing && state.startPoint) {
-                const rect = canvas.getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const y = e.clientY - rect.top;
-                const canvasX = (x - state.offset.x) / state.scale;
-                const canvasY = (y - state.offset.y) / state.scale;
-                
+                const { canvasX, canvasY } = getEventCanvasPosition(e);
+
                 const dx = canvasX - state.startPoint.x;
                 const dy = canvasY - state.startPoint.y;
-                
+
                 if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
                     addMeasurement(canvasX, canvasY);
                 }
-                
+
                 state.drawing = false;
                 state.startPoint = null;
                 draw();
@@ -662,7 +753,7 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = '#2a2a2a';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
+
             if (!state.image) return;
             
             ctx.save();
@@ -671,11 +762,12 @@
             ctx.drawImage(state.image, 0, 0);
             
             // Draw measurements
-            state.measurements.forEach(m => {
-                ctx.strokeStyle = m.type === 'linear' ? '#00ff00' : '#ff00ff';
-                ctx.fillStyle = m.type === 'linear' ? '#00ff00' : '#ff00ff';
+            state.measurements.forEach((m, idx) => {
+                const color = m.type === 'linear' ? '#00ff00' : '#ff00ff';
+                ctx.strokeStyle = color;
+                ctx.fillStyle = color;
                 ctx.lineWidth = 2 / state.scale;
-                
+
                 ctx.beginPath();
                 if (m.type === 'linear') {
                     ctx.moveTo(m.x1, m.y1);
@@ -684,15 +776,20 @@
                     ctx.rect(m.x1, m.y1, m.x2 - m.x1, m.y2 - m.y1);
                 }
                 ctx.stroke();
-                
+
                 // Points
+                const pointRadius = (state.editMode ? 6 : 4) / state.scale;
+                const startActive = state.editMode && idx === state.activeMeasurement && state.activeHandle === 'start';
+                const endActive = state.editMode && idx === state.activeMeasurement && state.activeHandle === 'end';
                 ctx.beginPath();
-                ctx.arc(m.x1, m.y1, 4 / state.scale, 0, Math.PI * 2);
+                ctx.fillStyle = startActive ? '#ffffff' : color;
+                ctx.arc(m.x1, m.y1, pointRadius, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.beginPath();
-                ctx.arc(m.x2, m.y2, 4 / state.scale, 0, Math.PI * 2);
+                ctx.fillStyle = endActive ? '#ffffff' : color;
+                ctx.arc(m.x2, m.y2, pointRadius, 0, Math.PI * 2);
                 ctx.fill();
-                
+
                 // Label
                 ctx.fillStyle = '#ffffff';
                 ctx.font = `${14 / state.scale}px Arial`;
@@ -737,14 +834,60 @@
             state.tool = tool;
             canvas.style.cursor = tool === 'move' ? 'move' : 'crosshair';
             document.getElementById('currentTool').textContent = tool;
-            
+
             document.getElementById('panBtn').classList.remove('btn-active');
             document.getElementById('linearBtn').classList.remove('btn-active');
             document.getElementById('areaBtn').classList.remove('btn-active');
-            
+
             if (tool === 'move') document.getElementById('panBtn').classList.add('btn-active');
             if (tool === 'linear') document.getElementById('linearBtn').classList.add('btn-active');
             if (tool === 'area') document.getElementById('areaBtn').classList.add('btn-active');
+        }
+
+        function updateEditModeUI() {
+            const editBtn = document.getElementById('editBtn');
+            const indicator = document.getElementById('editIndicator');
+            if (!editBtn || !indicator) return;
+
+            editBtn.disabled = state.measurements.length === 0;
+
+            if (state.measurements.length === 0 && state.editMode) {
+                state.editMode = false;
+                state.editingHandle = false;
+                state.activeMeasurement = null;
+                state.activeHandle = null;
+            }
+
+            if (state.activeMeasurement !== null && state.activeMeasurement >= state.measurements.length) {
+                state.activeMeasurement = null;
+                state.activeHandle = null;
+                state.editingHandle = false;
+            }
+
+            if (state.editMode) {
+                editBtn.classList.add('btn-active');
+                indicator.classList.add('show');
+            } else {
+                editBtn.classList.remove('btn-active');
+                indicator.classList.remove('show');
+            }
+        }
+
+        function toggleEditMode() {
+            if (state.measurements.length === 0) return;
+
+            state.editMode = !state.editMode;
+            if (!state.editMode) {
+                state.editingHandle = false;
+                state.activeMeasurement = null;
+                state.activeHandle = null;
+            } else {
+                state.drawing = false;
+                state.startPoint = null;
+            }
+
+            updateEditModeUI();
+            draw();
         }
         
         function zoom(factor) {
@@ -886,6 +1029,8 @@
             document.getElementById('calibrateBtn').disabled = state.measurements.length === 0;
             document.getElementById('exportBtn').disabled = state.measurements.length === 0;
             document.getElementById('clearBtn').disabled = state.measurements.length === 0;
+
+            updateEditModeUI();
         }
         
         function enableButtons() {
