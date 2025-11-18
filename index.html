@@ -8,6 +8,7 @@ export default function ConstructionTakeoff() {
   const [scaleFactor, setScaleFactor] = useState(1); // units per pixel
   const [tool, setTool] = useState('move');
   const [measurements, setMeasurements] = useState([]);
+  const [pendingScale, setPendingScale] = useState(null);
   const [drawing, setDrawing] = useState(false);
   const [currentLine, setCurrentLine] = useState([]);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
@@ -52,6 +53,8 @@ export default function ConstructionTakeoff() {
     setMeasurements([]);
     setOffset({ x: 0, y: 0 });
     setScale(1);
+    setScaleFactor(1);
+    setPendingScale(null);
   };
 
   const loadPDF = async (pdfFile) => {
@@ -188,20 +191,44 @@ export default function ConstructionTakeoff() {
     }
   };
 
+  const recalculateMeasurement = (measurement, factor) => {
+    if (measurement.type === 'linear') {
+      const dx = measurement.points[1].x - measurement.points[0].x;
+      const dy = measurement.points[1].y - measurement.points[0].y;
+      const pixels = Math.sqrt(dx * dx + dy * dy);
+      const length = pixels * factor;
+      return {
+        ...measurement,
+        value: length,
+        label: `${length.toFixed(2)} ft`
+      };
+    }
+
+    const width = Math.abs(measurement.points[1].x - measurement.points[0].x) * factor;
+    const height = Math.abs(measurement.points[1].y - measurement.points[0].y) * factor;
+    const area = width * height;
+    return {
+      ...measurement,
+      value: area,
+      label: `${area.toFixed(2)} sf`
+    };
+  };
+
   const handleCanvasMouseUp = (e) => {
     if (dragging) {
       setDragging(false);
     } else if (drawing) {
       const coords = getCanvasCoords(e);
       const finalLine = [currentLine[0], coords];
-      
+
       let measurement;
+      let pixels = 0;
       if (tool === 'linear') {
         const dx = finalLine[1].x - finalLine[0].x;
         const dy = finalLine[1].y - finalLine[0].y;
-        const pixels = Math.sqrt(dx * dx + dy * dy);
+        pixels = Math.sqrt(dx * dx + dy * dy);
         const length = pixels * scaleFactor;
-        
+
         measurement = {
           type: 'linear',
           points: finalLine,
@@ -214,7 +241,7 @@ export default function ConstructionTakeoff() {
         const width = Math.abs(finalLine[1].x - finalLine[0].x) * scaleFactor;
         const height = Math.abs(finalLine[1].y - finalLine[0].y) * scaleFactor;
         const area = width * height;
-        
+
         measurement = {
           type: 'area',
           points: finalLine,
@@ -224,8 +251,28 @@ export default function ConstructionTakeoff() {
           description: ''
         };
       }
-      
-      setMeasurements([...measurements, measurement]);
+
+      let calibrationApplied = false;
+      let newScaleFromCalibration = null;
+
+      setMeasurements(prevMeasurements => {
+        const updatedMeasurements = [...prevMeasurements, measurement];
+
+        if (pendingScale && measurement.type === 'linear') {
+          calibrationApplied = true;
+          newScaleFromCalibration = pendingScale / pixels;
+          return updatedMeasurements.map(m => recalculateMeasurement(m, newScaleFromCalibration));
+        }
+
+        return updatedMeasurements;
+      });
+
+      if (calibrationApplied && newScaleFromCalibration) {
+        setScaleFactor(newScaleFromCalibration);
+        setPendingScale(null);
+        alert(`Scale set: ${(1 / newScaleFromCalibration).toFixed(2)} pixels per foot`);
+      }
+
       setDrawing(false);
       setCurrentLine([]);
     }
@@ -234,48 +281,12 @@ export default function ConstructionTakeoff() {
   const setScaleReference = () => {
     const known = prompt('Enter the known distance in feet:');
     if (!known || isNaN(parseFloat(known))) return;
-    
+
     const knownDist = parseFloat(known);
-    
+
     alert('Draw a line on the plan that represents this distance');
     setTool('linear');
-    
-    // Wait for next measurement and use it to calibrate
-    const checkCalibration = setInterval(() => {
-      if (measurements.length > 0) {
-        const lastMeasurement = measurements[measurements.length - 1];
-        if (lastMeasurement.type === 'linear') {
-          const dx = lastMeasurement.points[1].x - lastMeasurement.points[0].x;
-          const dy = lastMeasurement.points[1].y - lastMeasurement.points[0].y;
-          const pixels = Math.sqrt(dx * dx + dy * dy);
-          
-          const newScaleFactor = knownDist / pixels;
-          setScaleFactor(newScaleFactor);
-          
-          // Update all measurements
-          const updated = measurements.map(m => {
-            if (m.type === 'linear') {
-              const dx = m.points[1].x - m.points[0].x;
-              const dy = m.points[1].y - m.points[0].y;
-              const pixels = Math.sqrt(dx * dx + dy * dy);
-              const length = pixels * newScaleFactor;
-              return { ...m, value: length, label: `${length.toFixed(2)} ft` };
-            } else {
-              const width = Math.abs(m.points[1].x - m.points[0].x) * newScaleFactor;
-              const height = Math.abs(m.points[1].y - m.points[0].y) * newScaleFactor;
-              const area = width * height;
-              return { ...m, value: area, label: `${area.toFixed(2)} sf` };
-            }
-          });
-          
-          setMeasurements(updated);
-          alert(`Scale set: ${(1 / newScaleFactor).toFixed(2)} pixels per foot`);
-          clearInterval(checkCalibration);
-        }
-      }
-    }, 100);
-    
-    setTimeout(() => clearInterval(checkCalibration), 30000);
+    setPendingScale(knownDist);
   };
 
   const exportToCSV = () => {
