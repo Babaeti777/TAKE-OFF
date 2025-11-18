@@ -1,67 +1,135 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Upload, Download, Trash2, Ruler, Square, Move, ZoomIn, ZoomOut, FileText } from 'lucide-react';
+
+/**
+ * A simple modal for calibrating the scale.
+ */
+function CalibrateModal({ onSubmit, onCancel, value, onChange }) {
+  return (
+    <div className="absolute inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" aria-modal="true">
+      <form 
+        onSubmit={onSubmit} 
+        className="bg-gray-800 p-6 rounded-lg shadow-xl w-full max-w-sm"
+      >
+        <h3 className="text-lg font-bold mb-4">Calibrate Scale</h3>
+        <p className="text-sm text-gray-300 mb-4">
+          Enter the actual length (in feet) for the last measurement you drew.
+        </p>
+        <input
+          type="number"
+          step="0.01"
+          value={value}
+          onChange={onChange}
+          className="w-full px-3 py-2 bg-gray-700 text-white rounded mb-4"
+          autoFocus
+        />
+        <div className="flex justify-end gap-3">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded text-sm font-medium"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm font-medium"
+          >
+            Calibrate
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+/**
+ * A simple notification component for alerts.
+ */
+function Notification({ message }) {
+  if (!message) return null;
+  const { text, type } = message;
+  const bgColor = type === 'success' ? 'bg-green-600' : 'bg-red-600';
+
+  return (
+    <div className={`absolute top-20 left-1/2 -translate-x-1/2 p-4 rounded-md text-white shadow-lg z-50 ${bgColor}`}>
+      {text}
+    </div>
+  );
+}
 
 export default function ConstructionTakeoff() {
   const [file, setFile] = useState(null);
   const [fileUrl, setFileUrl] = useState(null);
-  const [isPdf, setIsPdf] = useState(false);
   const [scale, setScale] = useState(1);
-  const [scaleFactor, setScaleFactor] = useState(1);
+  const [scaleFactor, setScaleFactor] = useState(1); // pixels to feet
   const [tool, setTool] = useState('move');
   const [measurements, setMeasurements] = useState([]);
   const [drawing, setDrawing] = useState(false);
   const [startPoint, setStartPoint] = useState(null);
   const [currentPoint, setCurrentPoint] = useState(null);
-  const [offset, setOffset] = useState({ x: 50, y: 50 });
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [pdfImage, setPdfImage] = useState(null);
   
+  // Notification and Modal State
+  const [message, setMessage] = useState(null); // { type: 'success' | 'error', text: '...' }
+  const [showCalibrateModal, setShowCalibrateModal] = useState(false);
+  const [calibrateValue, setCalibrateValue] = useState('');
+  const [lastMeasurementPixels, setLastMeasurementPixels] = useState(0);
+
   const canvasRef = useRef(null);
   const fileInputRef = useRef(null);
   const imageRef = useRef(null);
+  const canvasContainerRef = useRef(null); // For responsive canvas sizing
 
-  useEffect(() => {
-    drawCanvas();
-  }, [file, scale, offset, measurements, startPoint, currentPoint, pdfImage]);
+  const showMessage = (text, type = 'success', duration = 3000) => {
+    setMessage({ text, type });
+    setTimeout(() => {
+      setMessage(null);
+    }, duration);
+  };
 
-  const handleFileUpload = async (e) => {
+  const handleFileUpload = (e) => {
     const uploadedFile = e.target.files?.[0];
     if (!uploadedFile) return;
 
     const reader = new FileReader();
-    
-    if (uploadedFile.type === 'application/pdf') {
-      reader.onload = async (event) => {
-        const url = event.target.result;
-        setFileUrl(url);
-        setIsPdf(true);
-        setFile({ type: 'pdf' });
-        setPdfImage(null);
-      };
-      reader.readAsDataURL(uploadedFile);
-    } else {
-      reader.onload = (event) => {
-        const url = event.target.result;
+    reader.onload = (event) => {
+      const url = event.target.result;
+      setFileUrl(url);
+      
+      if (uploadedFile.type === 'application/pdf') {
+        setFile({ type: 'pdf', url });
+        showMessage('PDFs are not supported for measurement. Please upload a PNG or JPG.', 'error', 5000);
+      } else if (uploadedFile.type.startsWith('image/')) {
         const img = new Image();
         img.onload = () => {
           imageRef.current = img;
-          setFile({ type: 'image' });
-          setFileUrl(url);
-          setIsPdf(false);
-          setPdfImage(null);
+          setFile({ type: 'image', img });
+          // Center the image on load
+          const canvas = canvasRef.current;
+          if (canvas) {
+            const newScale = Math.min(canvas.width / img.width, canvas.height / img.height) * 0.9;
+            setScale(newScale);
+            setOffset({
+              x: (canvas.width - img.width * newScale) / 2,
+              y: (canvas.height - img.height * newScale) / 2,
+            });
+          }
         };
         img.src = url;
-      };
-      reader.readAsDataURL(uploadedFile);
-    }
+      } else {
+        showMessage('Unsupported file type. Please upload a PDF, JPG, or PNG.', 'error');
+      }
+    };
+    reader.readAsDataURL(uploadedFile);
     
     setMeasurements([]);
-    setOffset({ x: 50, y: 50 });
-    setScale(1);
+    setScaleFactor(1); // Reset scale factor
   };
 
-  const drawCanvas = () => {
+  const drawCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     
@@ -72,15 +140,12 @@ export default function ConstructionTakeoff() {
     ctx.fillStyle = '#2a2a2a';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Draw image or PDF snapshot
-    const imageToDraw = isPdf ? pdfImage : imageRef.current;
-    
-    if (imageToDraw) {
+    if (file?.type === 'image' && imageRef.current) {
       ctx.save();
       ctx.translate(offset.x, offset.y);
       ctx.scale(scale, scale);
       
-      ctx.drawImage(imageToDraw, 0, 0);
+      ctx.drawImage(imageRef.current, 0, 0);
       
       // Draw measurements
       ctx.lineWidth = 2 / scale;
@@ -97,7 +162,7 @@ export default function ConstructionTakeoff() {
         }
         ctx.stroke();
         
-        // Draw endpoint circles
+        // Draw points
         ctx.beginPath();
         ctx.arc(m.x1, m.y1, 4 / scale, 0, Math.PI * 2);
         ctx.fill();
@@ -107,13 +172,14 @@ export default function ConstructionTakeoff() {
         
         // Label
         ctx.fillStyle = '#ffffff';
-        ctx.font = `${14 / scale}px Arial`;
+        ctx.font = `bold ${14 / scale}px Arial`;
+        ctx.textAlign = 'center';
         const labelX = (m.x1 + m.x2) / 2;
         const labelY = (m.y1 + m.y2) / 2 - 10 / scale;
         ctx.fillText(m.label, labelX, labelY);
       });
       
-      // Draw current measurement being drawn
+      // Draw current drawing
       if (drawing && startPoint && currentPoint) {
         ctx.strokeStyle = tool === 'linear' ? '#00ff00' : '#ff00ff';
         ctx.fillStyle = tool === 'linear' ? '#00ff00' : '#ff00ff';
@@ -129,6 +195,7 @@ export default function ConstructionTakeoff() {
         ctx.stroke();
         ctx.setLineDash([]);
         
+        // Draw points
         ctx.beginPath();
         ctx.arc(startPoint.x, startPoint.y, 4 / scale, 0, Math.PI * 2);
         ctx.fill();
@@ -139,10 +206,40 @@ export default function ConstructionTakeoff() {
       
       ctx.restore();
     }
-  };
+  }, [file, scale, offset, measurements, startPoint, currentPoint, drawing, tool]);
+
+  // Effect to draw canvas when dependencies change
+  useEffect(() => {
+    drawCanvas();
+  }, [drawCanvas]);
+
+  // Effect to handle canvas resizing
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const container = canvasContainerRef.current;
+    if (!canvas || !container) return;
+
+    const resizeCanvas = () => {
+      const { clientWidth, clientHeight } = container;
+      if (canvas.width !== clientWidth || canvas.height !== clientHeight) {
+        canvas.width = clientWidth;
+        canvas.height = clientHeight;
+        drawCanvas(); // Redraw after resize
+      }
+    };
+
+    const resizeObserver = new ResizeObserver(resizeCanvas);
+    resizeObserver.observe(container);
+    resizeCanvas(); // Initial resize
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [drawCanvas]); // Depends on drawCanvas
 
   const getCanvasCoords = (e) => {
     const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0 };
     const rect = canvas.getBoundingClientRect();
     const x = (e.clientX - rect.left - offset.x) / scale;
     const y = (e.clientY - rect.top - offset.y) / scale;
@@ -150,10 +247,12 @@ export default function ConstructionTakeoff() {
   };
 
   const handleMouseDown = (e) => {
+    if (file?.type !== 'image') return;
+
     if (tool === 'move') {
       setDragging(true);
       setDragStart({ x: e.clientX - offset.x, y: e.clientY - offset.y });
-    } else if ((tool === 'linear' || tool === 'area') && (file && !isPdf || pdfImage)) {
+    } else if (tool === 'linear' || tool === 'area') {
       const coords = getCanvasCoords(e);
       setStartPoint(coords);
       setCurrentPoint(coords);
@@ -162,6 +261,8 @@ export default function ConstructionTakeoff() {
   };
 
   const handleMouseMove = (e) => {
+    if (file?.type !== 'image') return;
+
     if (dragging) {
       setOffset({
         x: e.clientX - dragStart.x,
@@ -174,85 +275,125 @@ export default function ConstructionTakeoff() {
   };
 
   const handleMouseUp = (e) => {
+    if (file?.type !== 'image') return;
+
     if (dragging) {
       setDragging(false);
     } else if (drawing && startPoint && currentPoint) {
+      // Prevent creating zero-size measurements
+      if (startPoint.x === currentPoint.x && startPoint.y === currentPoint.y) {
+          setDrawing(false);
+          setStartPoint(null);
+          setCurrentPoint(null);
+          return;
+      }
+
       const dx = currentPoint.x - startPoint.x;
       const dy = currentPoint.y - startPoint.y;
       
-      // Only add if there's meaningful distance
-      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
-        let measurement;
-        if (tool === 'linear') {
-          const pixels = Math.sqrt(dx * dx + dy * dy);
-          const length = pixels * scaleFactor;
-          
-          measurement = {
-            type: 'linear',
-            x1: startPoint.x,
-            y1: startPoint.y,
-            x2: currentPoint.x,
-            y2: currentPoint.y,
-            value: length,
-            unit: 'ft',
-            label: `${length.toFixed(2)} ft`,
-            description: ''
-          };
-        } else {
-          const width = Math.abs(dx) * scaleFactor;
-          const height = Math.abs(dy) * scaleFactor;
-          const area = width * height;
-          
-          measurement = {
-            type: 'area',
-            x1: startPoint.x,
-            y1: startPoint.y,
-            x2: currentPoint.x,
-            y2: currentPoint.y,
-            value: area,
-            unit: 'sf',
-            label: `${area.toFixed(2)} sf`,
-            description: ''
-          };
-        }
+      let measurement;
+      if (tool === 'linear') {
+        const pixels = Math.sqrt(dx * dx + dy * dy);
+        const length = pixels * scaleFactor;
         
-        setMeasurements([...measurements, measurement]);
+        measurement = {
+          type: 'linear',
+          x1: startPoint.x, y1: startPoint.y,
+          x2: currentPoint.x, y2: currentPoint.y,
+          value: length,
+          unit: 'ft',
+          label: `${length.toFixed(2)} ft`,
+          description: ''
+        };
+      } else { // Area
+        const width = Math.abs(dx) * scaleFactor;
+        const height = Math.abs(dy) * scaleFactor;
+        const area = width * height;
+        
+        measurement = {
+          type: 'area',
+          x1: Math.min(startPoint.x, currentPoint.x),
+          y1: Math.min(startPoint.y, currentPoint.y),
+          x2: Math.max(startPoint.x, currentPoint.x),
+          y2: Math.max(startPoint.y, currentPoint.y),
+          value: area,
+          unit: 'sf',
+          label: `${area.toFixed(2)} sf`,
+          description: ''
+        };
       }
       
+      setMeasurements([...measurements, measurement]);
       setDrawing(false);
       setStartPoint(null);
       setCurrentPoint(null);
     }
   };
 
-  const capturePdfAsImage = () => {
-    const embed = document.getElementById('pdf-embed');
-    if (!embed) return;
+  const handleWheel = (e) => {
+    if (file?.type !== 'image') return;
+    e.preventDefault();
     
-    alert('Click OK, then take a screenshot of the PDF. For now, please convert your PDF to JPG/PNG for best results.');
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    
+    // Get mouse position relative to canvas
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+
+    // Get mouse position in "world" coordinates
+    const worldX = (mouseX - offset.x) / scale;
+    const worldY = (mouseY - offset.y) / scale;
+    
+    // Determine new scale
+    const zoomFactor = 1.1;
+    const newScale = e.deltaY < 0 ? scale * zoomFactor : scale / zoomFactor;
+    const clampedScale = Math.max(0.1, Math.min(newScale, 10)); // Min/max zoom
+    
+    // New offset to zoom "to point"
+    const newOffsetX = mouseX - worldX * clampedScale;
+    const newOffsetY = mouseY - worldY * clampedScale;
+    
+    setScale(clampedScale);
+    setOffset({ x: newOffsetX, y: newOffsetY });
   };
 
   const calibrateScale = () => {
     if (measurements.length === 0) {
-      alert('Please draw a LINEAR measurement first on a known distance (like a wall dimension), then click this button to calibrate.');
+      showMessage('Please draw a linear measurement first to calibrate.', 'error');
       return;
     }
     
     const lastMeasurement = measurements[measurements.length - 1];
     if (lastMeasurement.type !== 'linear') {
-      alert('The last measurement must be LINEAR to calibrate. Please draw a line measurement first.');
+      showMessage('The last measurement must be a linear one to calibrate.', 'error');
       return;
     }
     
-    const known = prompt('Enter the actual length of the last drawn line in FEET (e.g., if the line represents a 10 foot wall, enter 10):');
-    if (!known || isNaN(parseFloat(known))) return;
-    
-    const knownDist = parseFloat(known);
     const dx = lastMeasurement.x2 - lastMeasurement.x1;
     const dy = lastMeasurement.y2 - lastMeasurement.y1;
     const pixels = Math.sqrt(dx * dx + dy * dy);
     
-    const newScaleFactor = knownDist / pixels;
+    setLastMeasurementPixels(pixels);
+    setCalibrateValue(''); // Clear old value
+    setShowCalibrateModal(true);
+  };
+
+  const handleCalibrateSubmit = (e) => {
+    e.preventDefault();
+    if (!calibrateValue || isNaN(parseFloat(calibrateValue))) {
+      showMessage('Please enter a valid number.', 'error');
+      return;
+    }
+    
+    const knownDist = parseFloat(calibrateValue);
+    if (knownDist <= 0) {
+      showMessage('Length must be a positive number.', 'error');
+      return;
+    }
+
+    const newScaleFactor = knownDist / lastMeasurementPixels;
     setScaleFactor(newScaleFactor);
     
     // Update all measurements
@@ -272,12 +413,13 @@ export default function ConstructionTakeoff() {
     });
     
     setMeasurements(updated);
-    alert(`✓ Scale calibrated successfully!\n\n1 pixel = ${newScaleFactor.toFixed(4)} feet\n\nAll measurements have been updated.`);
+    setShowCalibrateModal(false);
+    showMessage(`Scale calibrated! 1 pixel = ${newScaleFactor.toFixed(4)} feet`, 'success');
   };
 
   const exportToCSV = () => {
     if (measurements.length === 0) {
-      alert('No measurements to export');
+      showMessage('No measurements to export', 'error');
       return;
     }
 
@@ -291,16 +433,17 @@ export default function ConstructionTakeoff() {
 
     const csv = [
       headers.join(','),
-      ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+      ...rows.map(row => row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(',')) // Handle quotes in cells
     ].join('\n');
 
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = 'takeoff_measurements.csv';
     a.click();
     URL.revokeObjectURL(url);
+    showMessage('Measurements exported to CSV!', 'success');
   };
 
   const updateDescription = (idx, desc) => {
@@ -308,12 +451,25 @@ export default function ConstructionTakeoff() {
     updated[idx].description = desc;
     setMeasurements(updated);
   };
+  
+  const isFileLoaded = !!file;
+  const isImageFile = file?.type === 'image';
 
   return (
-    <div className="w-full h-screen bg-gray-900 text-white flex flex-col">
+    <div className="w-full h-screen bg-gray-900 text-white flex flex-col relative overflow-hidden">
+      <Notification message={message} />
+      {showCalibrateModal && (
+        <CalibrateModal
+          value={calibrateValue}
+          onChange={(e) => setCalibrateValue(e.target.value)}
+          onSubmit={handleCalibrateSubmit}
+          onCancel={() => setShowCalibrateModal(false)}
+        />
+      )}
+
       {/* Header */}
-      <div className="bg-gray-800 p-3 border-b border-gray-700">
-        <h1 className="text-xl font-bold mb-2">Construction Plan Takeoff Tool</h1>
+      <div className="bg-gray-800 p-4 border-b border-gray-700 z-10">
+        <h1 className="text-2xl font-bold mb-3">Construction Plan Takeoff Tool</h1>
         
         <div className="flex flex-wrap gap-2 mb-2">
           <input
@@ -328,212 +484,193 @@ export default function ConstructionTakeoff() {
             onClick={() => fileInputRef.current?.click()}
             className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm font-medium"
           >
-            <Upload size={16} />
-            Upload
+            <Upload size={18} />
+            Upload File
           </button>
           
           <button
             onClick={() => setTool('move')}
-            className={`flex items-center gap-2 px-3 py-2 rounded text-sm ${tool === 'move' ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'}`}
+            disabled={!isImageFile}
+            className={`flex items-center gap-2 px-3 py-2 rounded text-sm font-medium ${tool === 'move' ? 'bg-blue-600' : 'bg-gray-700 hover:bg-gray-600'} disabled:opacity-50 disabled:cursor-not-allowed`}
           >
-            <Move size={16} />
+            <Move size={18} />
             Pan
           </button>
           
           <button
             onClick={() => setTool('linear')}
-            disabled={!file}
-            className={`flex items-center gap-2 px-3 py-2 rounded text-sm ${tool === 'linear' ? 'bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} disabled:opacity-50`}
+            disabled={!isImageFile}
+            className={`flex items-center gap-2 px-3 py-2 rounded text-sm font-medium ${tool === 'linear' ? 'bg-green-600' : 'bg-gray-700 hover:bg-gray-600'} disabled:opacity-50 disabled:cursor-not-allowed`}
           >
-            <Ruler size={16} />
+            <Ruler size={18} />
             Linear
           </button>
           
           <button
             onClick={() => setTool('area')}
-            disabled={!file}
-            className={`flex items-center gap-2 px-3 py-2 rounded text-sm ${tool === 'area' ? 'bg-purple-600' : 'bg-gray-700 hover:bg-gray-600'} disabled:opacity-50`}
+            disabled={!isImageFile}
+            className={`flex items-center gap-2 px-3 py-2 rounded text-sm font-medium ${tool === 'area' ? 'bg-purple-600' : 'bg-gray-700 hover:bg-gray-600'} disabled:opacity-50 disabled:cursor-not-allowed`}
           >
-            <Square size={16} />
+            <Square size={18} />
             Area
           </button>
           
           <button
             onClick={calibrateScale}
-            disabled={measurements.length === 0}
-            className="flex items-center gap-2 px-3 py-2 bg-yellow-600 hover:bg-yellow-700 rounded text-sm disabled:opacity-50 font-medium"
+            disabled={!isImageFile || measurements.length === 0}
+            className="flex items-center gap-2 px-3 py-2 bg-yellow-600 hover:bg-yellow-700 text-gray-900 rounded text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Ruler size={16} />
-            Set Scale
+            <Ruler size={18} />
+            Calibrate
           </button>
           
           <button
-            onClick={() => setScale(s => Math.min(s * 1.3, 5))}
-            disabled={!file}
-            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm disabled:opacity-50"
+            onClick={() => setScale(s => Math.min(s * 1.2, 10))}
+            disabled={!isImageFile}
+            className="flex items-center justify-center p-2 bg-gray-700 hover:bg-gray-600 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Zoom In"
           >
-            <ZoomIn size={16} />
+            <ZoomIn size={18} />
           </button>
           
           <button
-            onClick={() => setScale(s => Math.max(s / 1.3, 0.2))}
-            disabled={!file}
-            className="px-3 py-2 bg-gray-700 hover:bg-gray-600 rounded text-sm disabled:opacity-50"
+            onClick={() => setScale(s => Math.max(s / 1.2, 0.1))}
+            disabled={!isImageFile}
+            className="flex items-center justify-center p-2 bg-gray-700 hover:bg-gray-600 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Zoom Out"
           >
-            <ZoomOut size={16} />
+            <ZoomOut size={18} />
           </button>
           
           <button
             onClick={exportToCSV}
             disabled={measurements.length === 0}
-            className="flex items-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 rounded text-sm disabled:opacity-50 font-medium"
+            className="flex items-center gap-2 px-3 py-2 bg-green-800 hover:bg-green-700 rounded text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Download size={16} />
+            <Download size={18} />
             Export CSV
           </button>
           
           <button
             onClick={() => setMeasurements([])}
             disabled={measurements.length === 0}
-            className="flex items-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 rounded text-sm disabled:opacity-50"
+            className="flex items-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 rounded text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Trash2 size={16} />
+            <Trash2 size={18} />
             Clear
           </button>
         </div>
         
-        <div className="flex gap-4 text-xs text-gray-400">
-          <span>Zoom: {(scale * 100).toFixed(0)}%</span>
-          <span>Scale: {scaleFactor.toFixed(4)} ft/px</span>
-          <span>Tool: {tool}</span>
-          <span>Measurements: {measurements.length}</span>
+        <div className="text-xs text-gray-400">
+          Zoom: {(scale * 100).toFixed(0)}% | Scale: {scaleFactor.toFixed(4)} ft/px | Tool: {tool}
         </div>
       </div>
 
       {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Canvas Area */}
-        <div className="flex-1 relative bg-gray-900 overflow-hidden">
-          {!file ? (
-            <div className="absolute inset-0 flex items-center justify-center">
+        {/* Canvas */}
+        <div ref={canvasContainerRef} className="flex-1 relative bg-gray-900">
+          <canvas
+            ref={canvasRef}
+            className={`w-full h-full ${tool === 'move' ? 'cursor-move' : 'cursor-crosshair'}`}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp} // Stop drawing if mouse leaves
+            onWheel={handleWheel}
+          />
+          
+          {!isFileLoaded && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="text-center text-gray-500">
                 <FileText size={64} className="mx-auto mb-4 opacity-50" />
-                <p className="text-xl mb-2">Upload a Construction Drawing</p>
-                <p className="text-sm mb-4">Supports JPG, PNG (PDF best converted to image)</p>
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded text-sm"
-                >
-                  Choose File
-                </button>
+                <p className="text-xl mb-2">Upload a drawing to begin</p>
+                <p className="text-sm">Supports PDF, JPG, PNG</p>
               </div>
             </div>
-          ) : isPdf ? (
-            <div className="absolute inset-0 flex flex-col">
-              <div className="bg-yellow-900 text-yellow-200 px-4 py-2 text-sm">
-                ⚠ PDF Support Limited: For best results, convert PDF to JPG/PNG first. You can view the PDF below but measurements work best on images.
-              </div>
-              <div className="flex-1 overflow-auto">
-                <embed
-                  id="pdf-embed"
-                  src={fileUrl}
-                  type="application/pdf"
-                  className="w-full h-full"
-                />
+          )}
+          
+          {file?.type === 'pdf' && (
+            <div className="absolute inset-0 flex items-center justify-center bg-gray-800 bg-opacity-90 z-20">
+              <div className="text-center text-yellow-300 p-8 bg-gray-700 rounded-lg shadow-lg max-w-sm">
+                <FileText size={48} className="mx-auto mb-4" />
+                <h3 className="text-xl font-bold mb-2">PDF Not Supported for Measuring</h3>
+                <p className="text-sm">This tool can only measure image files (PNG, JPG).</p>
+                <p className="text-sm mt-2">Please upload a raster image version of your plan.</p>
               </div>
             </div>
-          ) : (
-            <canvas
-              ref={canvasRef}
-              width={1200}
-              height={800}
-              className={`w-full h-full ${tool === 'move' ? 'cursor-move' : 'cursor-crosshair'}`}
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onMouseLeave={handleMouseUp}
-            />
           )}
         </div>
 
         {/* Sidebar */}
-        <div className="w-80 bg-gray-800 border-l border-gray-700 overflow-hidden flex flex-col">
-          <div className="p-4 border-b border-gray-700">
-            <h2 className="text-lg font-bold">Measurements</h2>
+        <div className="w-80 bg-gray-800 border-l border-gray-700 p-4 overflow-y-auto">
+          <h2 className="text-xl font-bold mb-4">Measurements</h2>
+          
+          <div className="mb-4 p-3 bg-gray-700 rounded text-sm">
+            <div className="text-gray-300 mb-1 font-semibold">Instructions:</div>
+            <ol className="text-xs text-gray-400 space-y-1 list-decimal list-inside">
+              <li>Upload a drawing (JPG/PNG).</li>
+              <li>Select Linear or Area tool.</li>
+              <li>Draw your first measurement.</li>
+              <li>Click "Calibrate" and enter the known length of that line.</li>
+              <li>Continue measuring!</li>
+              <li>Use Pan/Zoom (or mouse wheel).</li>
+            </ol>
           </div>
           
-          <div className="p-4 overflow-y-auto flex-1">
-            <div className="mb-4 p-3 bg-gray-700 rounded text-xs">
-              <div className="font-bold text-sm mb-2">Quick Start:</div>
-              <ol className="list-decimal list-inside space-y-1 text-gray-300">
-                <li>Upload JPG/PNG drawing</li>
-                <li>Click "Linear" tool</li>
-                <li>Draw line on known dimension</li>
-                <li>Click "Set Scale", enter real length</li>
-                <li>Continue measuring</li>
-                <li>Export to CSV</li>
-              </ol>
+          {measurements.length === 0 ? (
+            <div className="text-gray-500 text-center py-8 text-sm">
+              No measurements yet.<br/>Draw on the canvas to add.
             </div>
-            
-            {measurements.length === 0 ? (
-              <div className="text-gray-500 text-center py-8 text-sm">
-                No measurements yet<br/>
-                <span className="text-xs">Select a tool and draw on the canvas</span>
-              </div>
-            ) : (
-              <>
-                <div className="space-y-2 mb-4">
-                  {measurements.map((m, idx) => (
-                    <div key={idx} className="bg-gray-700 p-3 rounded text-sm">
-                      <div className="flex justify-between items-start mb-2">
-                        <div>
-                          <div className="font-bold text-base">{m.label}</div>
-                          <div className="text-xs text-gray-400">
-                            {m.type === 'linear' ? '📏 Length' : '⬛ Area'} • #{idx + 1}
-                          </div>
+          ) : (
+            <>
+              <div className="space-y-2 mb-4">
+                {measurements.map((m, idx) => (
+                  <div key={idx} className="bg-gray-700 p-3 rounded text-sm">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <div className={`font-bold ${m.type === 'linear' ? 'text-green-400' : 'text-purple-400'}`}>
+                          {m.label}
                         </div>
-                        <button
-                          onClick={() => setMeasurements(measurements.filter((_, i) => i !== idx))}
-                          className="text-red-400 hover:text-red-300 p-1"
-                          title="Delete"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                        <div className="text-xs text-gray-400">
+                          {m.type === 'linear' ? 'Length' : 'Area'}
+                        </div>
                       </div>
-                      
-                      <input
-                        type="text"
-                        placeholder="Add description..."
-                        value={m.description}
-                        onChange={(e) => updateDescription(idx, e.target.value)}
-                        className="w-full px-2 py-1 bg-gray-600 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
-                      />
+                      <button
+                        onClick={() => setMeasurements(measurements.filter((_, i) => i !== idx))}
+                        className="text-red-400 hover:text-red-300 p-1"
+                        title="Delete measurement"
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </div>
-                  ))}
-                </div>
-                
-                <div className="p-3 bg-gray-700 rounded">
-                  <div className="font-bold mb-2">📊 Summary</div>
-                  <div className="text-sm space-y-1 text-gray-300">
-                    <div className="flex justify-between">
-                      <span>Total Linear:</span>
-                      <span className="font-mono">{measurements.filter(m => m.type === 'linear').reduce((sum, m) => sum + m.value, 0).toFixed(2)} ft</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>Total Area:</span>
-                      <span className="font-mono">{measurements.filter(m => m.type === 'area').reduce((sum, m) => sum + m.value, 0).toFixed(2)} sf</span>
-                    </div>
-                    <div className="flex justify-between border-t border-gray-600 pt-1 mt-1">
-                      <span>Items:</span>
-                      <span className="font-mono">{measurements.length}</span>
-                    </div>
+                    
+                    <input
+                      type="text"
+                      placeholder="Description..."
+                      value={m.description}
+                      onChange={(e) => updateDescription(idx, e.target.value)}
+                      className="w-full px-2 py-1 bg-gray-600 rounded text-xs"
+                    />
                   </div>
+                ))}
+              </div>
+              
+              <div className="p-3 bg-gray-700 rounded text-sm sticky bottom-0">
+                <div className="font-bold mb-2">Summary</div>
+                <div className="text-xs space-y-1 text-gray-300">
+                  <div>Total Linear: {measurements.filter(m => m.type === 'linear').reduce((sum, m) => sum + m.value, 0).toFixed(2)} ft</div>
+                  <div>Total Area: {measurements.filter(m => m.type === 'area').reduce((sum, m) => sum + m.value, 0).toFixed(2)} sf</div>
+                  <div>Total Count: {measurements.length}</div>
                 </div>
-              </>
-            )}
-          </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
   );
 }
+
+
+This should give you a much more stable and user-friendly tool. Let me know if you have any other questions!
