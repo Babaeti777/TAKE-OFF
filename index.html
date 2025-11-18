@@ -118,6 +118,55 @@
             opacity: 0.5;
         }
         
+        .pdf-controls {
+            position: absolute;
+            bottom: 1rem;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            display: none;
+            align-items: center;
+            gap: 0.5rem;
+            z-index: 10;
+        }
+        
+        .pdf-controls button {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+        }
+        
+        .loading-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            z-index: 20;
+        }
+        
+        .loading-overlay.show {
+            display: flex;
+        }
+        
+        .spinner {
+            border: 4px solid #333;
+            border-top: 4px solid #3b82f6;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 1rem;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
         .sidebar {
             width: 320px;
             background: #2a2a2a;
@@ -292,8 +341,19 @@
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
                         </svg>
                         <p style="font-size: 1.25rem; margin-bottom: 0.5rem;">Upload a Construction Drawing</p>
-                        <p style="font-size: 0.875rem;">Supports JPG, PNG images</p>
+                        <p style="font-size: 0.875rem;">Supports JPG, PNG, and PDF files</p>
                     </div>
+                </div>
+                
+                <div class="loading-overlay" id="loadingOverlay">
+                    <div class="spinner"></div>
+                    <p id="loadingText">Loading PDF...</p>
+                </div>
+                
+                <div class="pdf-controls" id="pdfControls">
+                    <button class="btn-secondary" onclick="changePDFPage(-1)">◀ Prev</button>
+                    <span id="pageInfo">Page 1 of 1</span>
+                    <button class="btn-secondary" onclick="changePDFPage(1)">Next ▶</button>
                 </div>
             </div>
             
@@ -305,7 +365,7 @@
                     <div class="instructions">
                         <h3>Quick Start:</h3>
                         <ol>
-                            <li>Upload JPG/PNG drawing</li>
+                            <li>Upload JPG/PNG/PDF drawing</li>
                             <li>Click "Linear" tool</li>
                             <li>Draw line on known dimension</li>
                             <li>Click "Set Scale", enter real length</li>
@@ -320,7 +380,13 @@
         </div>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>
+        // Set PDF.js worker
+        if (typeof pdfjsLib !== 'undefined') {
+            pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        }
+        
         // State
         let state = {
             image: null,
@@ -332,19 +398,104 @@
             startPoint: null,
             offset: { x: 50, y: 50 },
             dragging: false,
-            dragStart: { x: 0, y: 0 }
+            dragStart: { x: 0, y: 0 },
+            pdfDoc: null,
+            currentPage: 1,
+            totalPages: 1
         };
         
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         
         // File upload
-        document.getElementById('fileInput').addEventListener('change', (e) => {
+        document.getElementById('fileInput').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
             
-            const reader = new FileReader();
-            reader.onload = (event) => {
+            if (file.type === 'application/pdf') {
+                await loadPDF(file);
+            } else {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        state.image = img;
+                        state.measurements = [];
+                        state.offset = { x: 50, y: 50 };
+                        state.scale = 1;
+                        document.getElementById('emptyState').style.display = 'none';
+                        updateUI();
+                        draw();
+                        enableButtons();
+                    };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+        
+        async function loadPDF(file) {
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            const loadingText = document.getElementById('loadingText');
+            
+            try {
+                loadingOverlay.classList.add('show');
+                loadingText.textContent = 'Loading PDF...';
+                
+                const arrayBuffer = await file.arrayBuffer();
+                const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+                const pdf = await loadingTask.promise;
+                
+                state.pdfDoc = pdf;
+                state.totalPages = pdf.numPages;
+                state.currentPage = 1;
+                
+                loadingText.textContent = `Rendering page 1 of ${pdf.numPages}...`;
+                
+                await renderPDFPage(1);
+                
+                // Show PDF controls if multiple pages
+                if (pdf.numPages > 1) {
+                    document.getElementById('pdfControls').style.display = 'flex';
+                    updatePageInfo();
+                }
+                
+                loadingOverlay.classList.remove('show');
+                
+            } catch (error) {
+                console.error('Error loading PDF:', error);
+                loadingOverlay.classList.remove('show');
+                alert('Error loading PDF: ' + error.message + '\n\nPlease try:\n1. A smaller PDF file\n2. Converting PDF to JPG/PNG\n3. A different PDF viewer');
+            }
+        }
+        
+        async function renderPDFPage(pageNumber) {
+            try {
+                if (!state.pdfDoc) return;
+                
+                const page = await state.pdfDoc.getPage(pageNumber);
+                
+                // Calculate scale to fit canvas nicely
+                const desiredWidth = 1000;
+                const viewport = page.getViewport({ scale: 1 });
+                const scale = desiredWidth / viewport.width;
+                const scaledViewport = page.getViewport({ scale: scale });
+                
+                // Create canvas for PDF rendering
+                const pdfCanvas = document.createElement('canvas');
+                const context = pdfCanvas.getContext('2d');
+                pdfCanvas.height = scaledViewport.height;
+                pdfCanvas.width = scaledViewport.width;
+                
+                // Render PDF page to canvas
+                const renderContext = {
+                    canvasContext: context,
+                    viewport: scaledViewport
+                };
+                
+                await page.render(renderContext).promise;
+                
+                // Convert canvas to image
                 const img = new Image();
                 img.onload = () => {
                     state.image = img;
@@ -356,10 +507,36 @@
                     draw();
                     enableButtons();
                 };
-                img.src = event.target.result;
-            };
-            reader.readAsDataURL(file);
-        });
+                img.src = pdfCanvas.toDataURL();
+                
+            } catch (error) {
+                console.error('Error rendering PDF page:', error);
+                alert('Error rendering page: ' + error.message);
+            }
+        }
+        
+        async function changePDFPage(delta) {
+            if (!state.pdfDoc) return;
+            
+            const newPage = state.currentPage + delta;
+            if (newPage < 1 || newPage > state.totalPages) return;
+            
+            state.currentPage = newPage;
+            
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            const loadingText = document.getElementById('loadingText');
+            loadingOverlay.classList.add('show');
+            loadingText.textContent = `Loading page ${newPage} of ${state.totalPages}...`;
+            
+            await renderPDFPage(newPage);
+            updatePageInfo();
+            
+            loadingOverlay.classList.remove('show');
+        }
+        
+        function updatePageInfo() {
+            document.getElementById('pageInfo').textContent = `Page ${state.currentPage} of ${state.totalPages}`;
+        }
         
         // Canvas events
         canvas.addEventListener('mousedown', handleMouseDown);
