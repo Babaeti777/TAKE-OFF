@@ -331,6 +331,15 @@
         input[type="file"] {
             display: none;
         }
+
+        kbd {
+            background: var(--input-bg);
+            border: 1px solid var(--input-border);
+            border-radius: 3px;
+            padding: 0.1rem 0.3rem;
+            font-family: monospace;
+            font-size: 0.7rem;
+        }
     </style>
 </head>
 <body>
@@ -400,9 +409,12 @@
                 </div>
                 
                 <div class="pdf-controls" id="pdfControls">
-                    <button class="btn-secondary" id="pdfPrevBtn">◀ Prev</button>
-                    <span id="pageInfo">Page 1 of 1</span>
-                    <button class="btn-secondary" id="pdfNextBtn">Next ▶</button>
+                    <button class="btn-secondary" id="pdfPrevBtn" aria-label="Previous page">◀</button>
+                    <span style="margin: 0 0.5rem;">Page </span>
+                    <input type="number" id="pageInput" min="1" max="1" value="1" style="width: 60px; padding: 0.25rem; text-align: center; background: #444; border: 1px solid #555; color: white; border-radius: 4px;">
+                    <span style="margin: 0 0.5rem;" id="pageTotal"> of 1</span>
+                    <button class="btn-secondary" id="pdfNextBtn" aria-label="Next page">▶</button>
+                    <button class="btn-secondary" id="pdfFitBtn" aria-label="Fit to width" style="margin-left: 0.5rem;">Fit Width</button>
                 </div>
             </div>
             
@@ -420,6 +432,13 @@
                             <li>Click "Set Scale", enter real length</li>
                             <li>Continue measuring</li>
                             <li>Export to CSV</li>
+                        </ol>
+                        <h3 style="margin-top: 0.75rem;">Area Tool (Polygon):</h3>
+                        <ol>
+                            <li>Click to add each corner point</li>
+                            <li>Click near first point to close</li>
+                            <li>Or press <kbd>Enter</kbd> to complete</li>
+                            <li>Press <kbd>Esc</kbd> to cancel</li>
                         </ol>
                     </div>
                     
@@ -467,6 +486,7 @@
             measurements: [],
             drawing: false,
             startPoint: null,
+            polygonPoints: [],              // Points for polygon area measurement
             offset: { x: CONSTANTS.DEFAULT_OFFSET_X, y: CONSTANTS.DEFAULT_OFFSET_Y },
             dragging: false,
             dragStart: { x: 0, y: 0 },
@@ -632,7 +652,43 @@
         }
         
         function updatePageInfo() {
-            document.getElementById('pageInfo').textContent = `Page ${state.currentPage} of ${state.totalPages}`;
+            document.getElementById('pageInput').value = state.currentPage;
+            document.getElementById('pageInput').max = state.totalPages;
+            document.getElementById('pageTotal').textContent = ` of ${state.totalPages}`;
+        }
+
+        async function goToPage(pageNum) {
+            if (!state.pdfDoc) return;
+
+            const page = Math.max(1, Math.min(pageNum, state.totalPages));
+            if (page === state.currentPage) return;
+
+            state.currentPage = page;
+
+            const loadingOverlay = document.getElementById('loadingOverlay');
+            const loadingText = document.getElementById('loadingText');
+            loadingOverlay.classList.add('show');
+            loadingText.textContent = `Loading page ${page} of ${state.totalPages}...`;
+
+            await renderPDFPage(page);
+            updatePageInfo();
+
+            loadingOverlay.classList.remove('show');
+        }
+
+        async function fitPDFToWidth() {
+            if (!state.pdfDoc || !state.image) return;
+
+            // Reset scale and offset to fit PDF to canvas width
+            const canvasWidth = canvas.width - 100; // Leave some padding
+            const imageWidth = state.image.width;
+            const newScale = canvasWidth / imageWidth;
+
+            state.scale = newScale;
+            state.offset = { x: 50, y: 50 };
+
+            updateUI();
+            draw();
         }
         
         // Canvas events
@@ -656,37 +712,89 @@
             const threshold = CONSTANTS.HANDLE_THRESHOLD / state.scale;
             for (let i = state.measurements.length - 1; i >= 0; i--) {
                 const m = state.measurements[i];
-                const points = [
-                    { x: m.x1, y: m.y1, handle: 'start' },
-                    { x: m.x2, y: m.y2, handle: 'end' }
-                ];
 
-                for (const point of points) {
-                    const dx = x - point.x;
-                    const dy = y - point.y;
-                    if (Math.sqrt(dx * dx + dy * dy) <= threshold) {
-                        return { index: i, handle: point.handle };
+                if (m.type === 'linear') {
+                    // Linear measurements have start and end points
+                    const points = [
+                        { x: m.x1, y: m.y1, handle: 'start' },
+                        { x: m.x2, y: m.y2, handle: 'end' }
+                    ];
+
+                    for (const point of points) {
+                        const dx = x - point.x;
+                        const dy = y - point.y;
+                        if (Math.sqrt(dx * dx + dy * dy) <= threshold) {
+                            return { index: i, handle: point.handle };
+                        }
+                    }
+                } else if (m.points) {
+                    // Polygon area measurements - check each point
+                    for (let pIdx = 0; pIdx < m.points.length; pIdx++) {
+                        const point = m.points[pIdx];
+                        const dx = x - point.x;
+                        const dy = y - point.y;
+                        if (Math.sqrt(dx * dx + dy * dy) <= threshold) {
+                            return { index: i, handle: pIdx };  // handle is the point index
+                        }
+                    }
+                } else {
+                    // Legacy rectangle format
+                    const points = [
+                        { x: m.x1, y: m.y1, handle: 'start' },
+                        { x: m.x2, y: m.y2, handle: 'end' }
+                    ];
+
+                    for (const point of points) {
+                        const dx = x - point.x;
+                        const dy = y - point.y;
+                        if (Math.sqrt(dx * dx + dy * dy) <= threshold) {
+                            return { index: i, handle: point.handle };
+                        }
                     }
                 }
             }
             return null;
         }
 
-        function recalculateMeasurement(measurement) {
-            const dx = measurement.x2 - measurement.x1;
-            const dy = measurement.y2 - measurement.y1;
+        // Calculate polygon area using shoelace formula
+        function calculatePolygonArea(points) {
+            if (points.length < 3) return 0;
 
+            let area = 0;
+            for (let i = 0; i < points.length; i++) {
+                const j = (i + 1) % points.length;
+                area += points[i].x * points[j].y;
+                area -= points[j].x * points[i].y;
+            }
+            return Math.abs(area / 2);
+        }
+
+        function recalculateMeasurement(measurement) {
             if (measurement.type === 'linear') {
+                const dx = measurement.x2 - measurement.x1;
+                const dy = measurement.y2 - measurement.y1;
                 const pixels = Math.sqrt(dx * dx + dy * dy);
                 const length = pixels * state.scaleFactor;
                 measurement.value = length;
                 measurement.label = length.toFixed(2) + ' ft';
             } else {
-                const width = Math.abs(dx) * state.scaleFactor;
-                const height = Math.abs(dy) * state.scaleFactor;
-                const area = width * height;
-                measurement.value = area;
-                measurement.label = area.toFixed(2) + ' sf';
+                // Area measurement - supports both polygon and rectangle formats
+                if (measurement.points) {
+                    // Polygon format
+                    const pixelArea = calculatePolygonArea(measurement.points);
+                    const area = pixelArea * (state.scaleFactor * state.scaleFactor);
+                    measurement.value = area;
+                    measurement.label = area.toFixed(2) + ' sf';
+                } else {
+                    // Legacy rectangle format
+                    const dx = measurement.x2 - measurement.x1;
+                    const dy = measurement.y2 - measurement.y1;
+                    const width = Math.abs(dx) * state.scaleFactor;
+                    const height = Math.abs(dy) * state.scaleFactor;
+                    const area = width * height;
+                    measurement.value = area;
+                    measurement.label = area.toFixed(2) + ' sf';
+                }
             }
         }
 
@@ -713,7 +821,30 @@
                 state.dragging = true;
                 state.dragStart = { x: pixelX, y: pixelY };
                 state.originalOffset = { ...state.offset };
+            } else if (state.tool === 'area') {
+                // Polygon area measurement
+                const clickThreshold = 15 / state.scale;
+
+                // Check if clicking near first point to close polygon
+                if (state.polygonPoints.length >= 3) {
+                    const firstPoint = state.polygonPoints[0];
+                    const dx = canvasX - firstPoint.x;
+                    const dy = canvasY - firstPoint.y;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance < clickThreshold) {
+                        // Close polygon and create measurement
+                        completePolygon();
+                        return;
+                    }
+                }
+
+                // Add point to polygon
+                state.polygonPoints.push({ x: canvasX, y: canvasY });
+                state.drawing = true;
+                draw();
             } else {
+                // Linear measurement
                 state.drawing = true;
                 state.startPoint = { x: canvasX, y: canvasY };
                 draw();
@@ -726,12 +857,22 @@
             if (state.editingHandle && state.activeMeasurement !== null) {
                 const measurement = state.measurements[state.activeMeasurement];
                 if (measurement) {
-                    if (state.activeHandle === 'start') {
-                        measurement.x1 = canvasX;
-                        measurement.y1 = canvasY;
-                    } else {
-                        measurement.x2 = canvasX;
-                        measurement.y2 = canvasY;
+                    if (measurement.type === 'linear' || !measurement.points) {
+                        // Linear or legacy rectangle
+                        if (state.activeHandle === 'start') {
+                            measurement.x1 = canvasX;
+                            measurement.y1 = canvasY;
+                        } else {
+                            measurement.x2 = canvasX;
+                            measurement.y2 = canvasY;
+                        }
+                    } else if (measurement.points) {
+                        // Polygon - activeHandle is the point index
+                        const pointIndex = state.activeHandle;
+                        if (pointIndex < measurement.points.length) {
+                            measurement.points[pointIndex].x = canvasX;
+                            measurement.points[pointIndex].y = canvasY;
+                        }
                     }
                     recalculateMeasurement(measurement);
                     draw();
@@ -751,6 +892,35 @@
             }
         }
 
+        function completePolygon() {
+            if (state.polygonPoints.length < 3) {
+                alert('⚠️ Polygon Area\n\nYou need at least 3 points to create an area measurement.');
+                state.polygonPoints = [];
+                state.drawing = false;
+                draw();
+                return;
+            }
+
+            // Calculate area
+            const pixelArea = calculatePolygonArea(state.polygonPoints);
+            const area = pixelArea * (state.scaleFactor * state.scaleFactor);
+
+            const measurement = {
+                type: 'area',
+                points: [...state.polygonPoints],  // Store all polygon points
+                value: area,
+                unit: 'sf',
+                label: area.toFixed(2) + ' sf',
+                description: ''
+            };
+
+            state.measurements.push(measurement);
+            state.polygonPoints = [];
+            state.drawing = false;
+            updateUI();
+            draw();
+        }
+
         function handleMouseUp(e) {
             if (state.editingHandle) {
                 state.editingHandle = false;
@@ -763,7 +933,8 @@
 
             if (state.dragging) {
                 state.dragging = false;
-            } else if (state.drawing && state.startPoint) {
+            } else if (state.drawing && state.startPoint && state.tool === 'linear') {
+                // Only handle mouseUp for linear measurements
                 const { canvasX, canvasY } = getEventCanvasPosition(e);
 
                 const dx = canvasX - state.startPoint.x;
@@ -777,6 +948,7 @@
                 state.startPoint = null;
                 draw();
             }
+            // For area tool, points are added on mouseDown, not mouseUp
         }
         
         function addMeasurement(endX, endY) {
@@ -835,38 +1007,118 @@
             state.measurements.forEach((m, idx) => {
                 const color = m.type === 'linear' ? CONSTANTS.COLOR_LINEAR : CONSTANTS.COLOR_AREA;
                 ctx.strokeStyle = color;
-                ctx.fillStyle = color;
+                ctx.fillStyle = color + '40'; // Semi-transparent fill for polygons
                 ctx.lineWidth = CONSTANTS.LINE_WIDTH / state.scale;
 
                 ctx.beginPath();
                 if (m.type === 'linear') {
                     ctx.moveTo(m.x1, m.y1);
                     ctx.lineTo(m.x2, m.y2);
+                    ctx.stroke();
+
+                    // Draw endpoints for linear
+                    const pointRadius = (state.editMode ? CONSTANTS.POINT_RADIUS_EDIT : CONSTANTS.POINT_RADIUS_NORMAL) / state.scale;
+                    const startActive = state.editMode && idx === state.activeMeasurement && state.activeHandle === 'start';
+                    const endActive = state.editMode && idx === state.activeMeasurement && state.activeHandle === 'end';
+
+                    ctx.fillStyle = startActive ? CONSTANTS.COLOR_ACTIVE : color;
+                    ctx.beginPath();
+                    ctx.arc(m.x1, m.y1, pointRadius, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.fillStyle = endActive ? CONSTANTS.COLOR_ACTIVE : color;
+                    ctx.beginPath();
+                    ctx.arc(m.x2, m.y2, pointRadius, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Label for linear
+                    ctx.fillStyle = CONSTANTS.COLOR_ACTIVE;
+                    ctx.font = `${CONSTANTS.FONT_SIZE / state.scale}px Arial`;
+                    const labelX = (m.x1 + m.x2) / 2;
+                    const labelY = (m.y1 + m.y2) / 2 - CONSTANTS.LABEL_OFFSET / state.scale;
+                    ctx.fillText(m.label, labelX, labelY);
+                } else if (m.points) {
+                    // Polygon area
+                    if (m.points.length > 0) {
+                        ctx.moveTo(m.points[0].x, m.points[0].y);
+                        for (let i = 1; i < m.points.length; i++) {
+                            ctx.lineTo(m.points[i].x, m.points[i].y);
+                        }
+                        ctx.closePath();
+                        ctx.fill();
+                        ctx.strokeStyle = color;
+                        ctx.stroke();
+
+                        // Draw polygon points
+                        const pointRadius = (state.editMode ? CONSTANTS.POINT_RADIUS_EDIT : CONSTANTS.POINT_RADIUS_NORMAL) / state.scale;
+                        m.points.forEach((point, pIdx) => {
+                            const isActive = state.editMode && idx === state.activeMeasurement && state.activeHandle === pIdx;
+                            ctx.fillStyle = isActive ? CONSTANTS.COLOR_ACTIVE : color;
+                            ctx.beginPath();
+                            ctx.arc(point.x, point.y, pointRadius, 0, Math.PI * 2);
+                            ctx.fill();
+                        });
+
+                        // Label at centroid
+                        let centroidX = 0, centroidY = 0;
+                        m.points.forEach(p => {
+                            centroidX += p.x;
+                            centroidY += p.y;
+                        });
+                        centroidX /= m.points.length;
+                        centroidY /= m.points.length;
+
+                        ctx.fillStyle = CONSTANTS.COLOR_ACTIVE;
+                        ctx.font = `${CONSTANTS.FONT_SIZE / state.scale}px Arial`;
+                        ctx.fillText(m.label, centroidX, centroidY);
+                    }
                 } else {
+                    // Legacy rectangle format
                     ctx.rect(m.x1, m.y1, m.x2 - m.x1, m.y2 - m.y1);
+                    ctx.stroke();
+
+                    const pointRadius = (state.editMode ? CONSTANTS.POINT_RADIUS_EDIT : CONSTANTS.POINT_RADIUS_NORMAL) / state.scale;
+                    ctx.fillStyle = color;
+                    ctx.beginPath();
+                    ctx.arc(m.x1, m.y1, pointRadius, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.beginPath();
+                    ctx.arc(m.x2, m.y2, pointRadius, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    ctx.fillStyle = CONSTANTS.COLOR_ACTIVE;
+                    ctx.font = `${CONSTANTS.FONT_SIZE / state.scale}px Arial`;
+                    const labelX = (m.x1 + m.x2) / 2;
+                    const labelY = (m.y1 + m.y2) / 2 - CONSTANTS.LABEL_OFFSET / state.scale;
+                    ctx.fillText(m.label, labelX, labelY);
                 }
-                ctx.stroke();
-
-                // Points
-                const pointRadius = (state.editMode ? CONSTANTS.POINT_RADIUS_EDIT : CONSTANTS.POINT_RADIUS_NORMAL) / state.scale;
-                const startActive = state.editMode && idx === state.activeMeasurement && state.activeHandle === 'start';
-                const endActive = state.editMode && idx === state.activeMeasurement && state.activeHandle === 'end';
-                ctx.beginPath();
-                ctx.fillStyle = startActive ? CONSTANTS.COLOR_ACTIVE : color;
-                ctx.arc(m.x1, m.y1, pointRadius, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.beginPath();
-                ctx.fillStyle = endActive ? CONSTANTS.COLOR_ACTIVE : color;
-                ctx.arc(m.x2, m.y2, pointRadius, 0, Math.PI * 2);
-                ctx.fill();
-
-                // Label
-                ctx.fillStyle = CONSTANTS.COLOR_ACTIVE;
-                ctx.font = `${CONSTANTS.FONT_SIZE / state.scale}px Arial`;
-                const labelX = (m.x1 + m.x2) / 2;
-                const labelY = (m.y1 + m.y2) / 2 - CONSTANTS.LABEL_OFFSET / state.scale;
-                ctx.fillText(m.label, labelX, labelY);
             });
+
+            // Draw polygon in progress
+            if (state.polygonPoints.length > 0) {
+                ctx.strokeStyle = CONSTANTS.COLOR_AREA;
+                ctx.fillStyle = CONSTANTS.COLOR_AREA + '40';
+                ctx.lineWidth = CONSTANTS.LINE_WIDTH / state.scale;
+                ctx.setLineDash([CONSTANTS.DASH_SIZE / state.scale, CONSTANTS.DASH_SIZE / state.scale]);
+
+                ctx.beginPath();
+                ctx.moveTo(state.polygonPoints[0].x, state.polygonPoints[0].y);
+                for (let i = 1; i < state.polygonPoints.length; i++) {
+                    ctx.lineTo(state.polygonPoints[i].x, state.polygonPoints[i].y);
+                }
+                // Don't close path yet - show preview to current mouse position
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // Draw points
+                const pointRadius = CONSTANTS.POINT_RADIUS_NORMAL / state.scale;
+                state.polygonPoints.forEach((point, i) => {
+                    ctx.fillStyle = i === 0 ? CONSTANTS.COLOR_ACTIVE : CONSTANTS.COLOR_AREA;
+                    ctx.beginPath();
+                    ctx.arc(point.x, point.y, pointRadius * (i === 0 ? 1.5 : 1), 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            }
             
             ctx.restore();
         }
@@ -876,26 +1128,49 @@
             ctx.translate(state.offset.x, state.offset.y);
             ctx.scale(state.scale, state.scale);
 
-            ctx.strokeStyle = state.tool === 'linear' ? CONSTANTS.COLOR_LINEAR : CONSTANTS.COLOR_AREA;
-            ctx.fillStyle = state.tool === 'linear' ? CONSTANTS.COLOR_LINEAR : CONSTANTS.COLOR_AREA;
-            ctx.lineWidth = CONSTANTS.LINE_WIDTH / state.scale;
-            ctx.setLineDash([CONSTANTS.DASH_SIZE / state.scale, CONSTANTS.DASH_SIZE / state.scale]);
+            if (state.tool === 'linear' && state.startPoint) {
+                ctx.strokeStyle = CONSTANTS.COLOR_LINEAR;
+                ctx.fillStyle = CONSTANTS.COLOR_LINEAR;
+                ctx.lineWidth = CONSTANTS.LINE_WIDTH / state.scale;
+                ctx.setLineDash([CONSTANTS.DASH_SIZE / state.scale, CONSTANTS.DASH_SIZE / state.scale]);
 
-            ctx.beginPath();
-            if (state.tool === 'linear') {
+                ctx.beginPath();
                 ctx.moveTo(state.startPoint.x, state.startPoint.y);
                 ctx.lineTo(x, y);
-            } else {
-                ctx.rect(state.startPoint.x, state.startPoint.y, x - state.startPoint.x, y - state.startPoint.y);
-            }
-            ctx.stroke();
+                ctx.stroke();
 
-            ctx.beginPath();
-            ctx.arc(state.startPoint.x, state.startPoint.y, CONSTANTS.POINT_RADIUS_NORMAL / state.scale, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.beginPath();
-            ctx.arc(x, y, CONSTANTS.POINT_RADIUS_NORMAL / state.scale, 0, Math.PI * 2);
-            ctx.fill();
+                ctx.setLineDash([]);
+                ctx.beginPath();
+                ctx.arc(state.startPoint.x, state.startPoint.y, CONSTANTS.POINT_RADIUS_NORMAL / state.scale, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(x, y, CONSTANTS.POINT_RADIUS_NORMAL / state.scale, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (state.tool === 'area' && state.polygonPoints.length > 0) {
+                // Show preview line from last point to current mouse position
+                const lastPoint = state.polygonPoints[state.polygonPoints.length - 1];
+
+                ctx.strokeStyle = CONSTANTS.COLOR_AREA;
+                ctx.lineWidth = CONSTANTS.LINE_WIDTH / state.scale;
+                ctx.setLineDash([CONSTANTS.DASH_SIZE / state.scale, CONSTANTS.DASH_SIZE / state.scale]);
+
+                ctx.beginPath();
+                ctx.moveTo(lastPoint.x, lastPoint.y);
+                ctx.lineTo(x, y);
+                ctx.stroke();
+
+                ctx.setLineDash([]);
+
+                // Also show line back to first point if we have at least 2 points
+                if (state.polygonPoints.length >= 2) {
+                    const firstPoint = state.polygonPoints[0];
+                    ctx.strokeStyle = CONSTANTS.COLOR_AREA + '80';
+                    ctx.beginPath();
+                    ctx.moveTo(x, y);
+                    ctx.lineTo(firstPoint.x, firstPoint.y);
+                    ctx.stroke();
+                }
+            }
 
             ctx.restore();
         }
@@ -1011,19 +1286,8 @@
             state.scaleFactor = knownDist / pixels;
             
             // Update all measurements
-            state.measurements = state.measurements.map(m => {
-                if (m.type === 'linear') {
-                    const dx = m.x2 - m.x1;
-                    const dy = m.y2 - m.y1;
-                    const pixels = Math.sqrt(dx * dx + dy * dy);
-                    const length = pixels * state.scaleFactor;
-                    return { ...m, value: length, label: length.toFixed(2) + ' ft' };
-                } else {
-                    const width = Math.abs(m.x2 - m.x1) * state.scaleFactor;
-                    const height = Math.abs(m.y2 - m.y1) * state.scaleFactor;
-                    const area = width * height;
-                    return { ...m, value: area, label: area.toFixed(2) + ' sf' };
-                }
+            state.measurements.forEach(m => {
+                recalculateMeasurement(m);
             });
             
             updateUI();
@@ -1163,8 +1427,20 @@
 
             switch(e.key.toLowerCase()) {
                 case 'escape':
-                    if (state.editMode) {
+                    if (state.polygonPoints.length > 0) {
+                        // Cancel polygon in progress
+                        state.polygonPoints = [];
+                        state.drawing = false;
+                        draw();
+                    } else if (state.editMode) {
                         toggleEditMode();
+                    }
+                    break;
+                case 'enter':
+                    if (state.polygonPoints.length >= 3) {
+                        // Complete polygon
+                        e.preventDefault();
+                        completePolygon();
                     }
                     break;
                 case 'delete':
@@ -1260,6 +1536,26 @@
         document.getElementById('pdfNextBtn').addEventListener('click', () => {
             changePDFPage(1);
         });
+
+        document.getElementById('pageInput').addEventListener('change', (e) => {
+            const pageNum = parseInt(e.target.value);
+            if (!isNaN(pageNum)) {
+                goToPage(pageNum);
+            }
+        });
+
+        document.getElementById('pageInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const pageNum = parseInt(e.target.value);
+                if (!isNaN(pageNum)) {
+                    goToPage(pageNum);
+                }
+                e.target.blur(); // Remove focus from input
+            }
+        });
+
+        document.getElementById('pdfFitBtn').addEventListener('click', fitPDFToWidth);
 
         // Initialize
         setTool('move');
