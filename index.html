@@ -5,16 +5,42 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Construction Plan Takeoff Tool</title>
     <style>
+        :root {
+            --bg-primary: #1a1a1a;
+            --bg-secondary: #2a2a2a;
+            --bg-tertiary: #333;
+            --border-color: #444;
+            --text-primary: #fff;
+            --text-secondary: #aaa;
+            --text-tertiary: #999;
+            --text-muted: #666;
+            --text-bright: #ccc;
+            --input-bg: #444;
+            --input-border: #555;
+            --btn-primary: #3b82f6;
+            --btn-primary-hover: #2563eb;
+            --btn-success: #10b981;
+            --btn-success-hover: #059669;
+            --btn-warning: #f59e0b;
+            --btn-warning-hover: #d97706;
+            --btn-danger: #ef4444;
+            --btn-danger-hover: #dc2626;
+            --btn-secondary: #4b5563;
+            --btn-secondary-hover: #374151;
+            --btn-edit: #8b5cf6;
+            --btn-edit-hover: #7c3aed;
+        }
+
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-        
+
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-            background: #1a1a1a;
-            color: #fff;
+            background: var(--bg-primary);
+            color: var(--text-primary);
             overflow: hidden;
         }
         
@@ -25,9 +51,9 @@
         }
         
         .header {
-            background: #2a2a2a;
+            background: var(--bg-secondary);
             padding: 1rem;
-            border-bottom: 1px solid #444;
+            border-bottom: 1px solid var(--border-color);
         }
         
         .header h1 {
@@ -59,28 +85,28 @@
             cursor: not-allowed;
         }
         
-        .btn-primary { background: #3b82f6; color: white; }
-        .btn-primary:hover:not(:disabled) { background: #2563eb; }
-        
-        .btn-success { background: #10b981; color: white; }
-        .btn-success:hover:not(:disabled) { background: #059669; }
-        
-        .btn-warning { background: #f59e0b; color: white; }
-        .btn-warning:hover:not(:disabled) { background: #d97706; }
-        
-        .btn-danger { background: #ef4444; color: white; }
-        .btn-danger:hover:not(:disabled) { background: #dc2626; }
-        
-        .btn-secondary { background: #4b5563; color: white; }
-        .btn-secondary:hover:not(:disabled) { background: #374151; }
-        
-        .btn-active { background: #3b82f6 !important; }
-        
-        .btn-edit { background: #8b5cf6; color: white; }
-        .btn-edit:hover:not(:disabled) { background: #7c3aed; }
+        .btn-primary { background: var(--btn-primary); color: white; }
+        .btn-primary:hover:not(:disabled) { background: var(--btn-primary-hover); }
+
+        .btn-success { background: var(--btn-success); color: white; }
+        .btn-success:hover:not(:disabled) { background: var(--btn-success-hover); }
+
+        .btn-warning { background: var(--btn-warning); color: white; }
+        .btn-warning:hover:not(:disabled) { background: var(--btn-warning-hover); }
+
+        .btn-danger { background: var(--btn-danger); color: white; }
+        .btn-danger:hover:not(:disabled) { background: var(--btn-danger-hover); }
+
+        .btn-secondary { background: var(--btn-secondary); color: white; }
+        .btn-secondary:hover:not(:disabled) { background: var(--btn-secondary-hover); }
+
+        .btn-active { background: var(--btn-primary) !important; }
+
+        .btn-edit { background: var(--btn-edit); color: white; }
+        .btn-edit:hover:not(:disabled) { background: var(--btn-edit-hover); }
 
         .edit-mode-indicator {
-            background: #8b5cf6;
+            background: var(--btn-edit);
             color: white;
             padding: 0.5rem 1rem;
             border-radius: 4px;
@@ -88,14 +114,14 @@
             display: none;
             margin-bottom: 0.5rem;
         }
-        
+
         .edit-mode-indicator.show {
             display: block;
         }
-        
+
         .status {
             font-size: 0.75rem;
-            color: #999;
+            color: var(--text-tertiary);
             display: flex;
             gap: 1rem;
         }
@@ -109,15 +135,15 @@
         .canvas-area {
             flex: 1;
             position: relative;
-            background: #1a1a1a;
+            background: var(--bg-primary);
         }
-        
+
         canvas {
             display: block;
             width: 100%;
             height: 100%;
         }
-        
+
         .empty-state {
             position: absolute;
             inset: 0;
@@ -125,7 +151,7 @@
             align-items: center;
             justify-content: center;
             text-align: center;
-            color: #666;
+            color: var(--text-muted);
         }
         
         .empty-state svg {
@@ -170,8 +196,8 @@
         }
         
         .spinner {
-            border: 4px solid #333;
-            border-top: 4px solid #3b82f6;
+            border: 4px solid var(--bg-tertiary);
+            border-top: 4px solid var(--btn-primary);
             border-radius: 50%;
             width: 40px;
             height: 40px;
@@ -186,15 +212,15 @@
         
         .sidebar {
             width: 320px;
-            background: #2a2a2a;
-            border-left: 1px solid #444;
+            background: var(--bg-secondary);
+            border-left: 1px solid var(--border-color);
             display: flex;
             flex-direction: column;
         }
-        
+
         .sidebar-header {
             padding: 1rem;
-            border-bottom: 1px solid #444;
+            border-bottom: 1px solid var(--border-color);
         }
         
         .sidebar-content {
@@ -204,21 +230,21 @@
         }
         
         .instructions {
-            background: #333;
+            background: var(--bg-tertiary);
             padding: 0.75rem;
             border-radius: 4px;
             margin-bottom: 1rem;
             font-size: 0.75rem;
         }
-        
+
         .instructions h3 {
             font-size: 0.875rem;
             margin-bottom: 0.5rem;
         }
-        
+
         .instructions ol {
             margin-left: 1.25rem;
-            color: #aaa;
+            color: var(--text-secondary);
         }
         
         .instructions li {
@@ -226,79 +252,79 @@
         }
         
         .measurement-item {
-            background: #333;
+            background: var(--bg-tertiary);
             padding: 0.75rem;
             border-radius: 4px;
             margin-bottom: 0.5rem;
         }
-        
+
         .measurement-header {
             display: flex;
             justify-content: space-between;
             align-items: start;
             margin-bottom: 0.5rem;
         }
-        
+
         .measurement-label {
             font-weight: bold;
             font-size: 1rem;
         }
-        
+
         .measurement-type {
             font-size: 0.75rem;
-            color: #aaa;
+            color: var(--text-secondary);
         }
-        
+
         .delete-btn {
             padding: 0.25rem;
             background: transparent;
-            color: #ef4444;
+            color: var(--btn-danger);
             border: none;
             cursor: pointer;
         }
-        
+
         .delete-btn:hover {
-            color: #dc2626;
+            color: var(--btn-danger-hover);
         }
         
         input[type="text"] {
             width: 100%;
             padding: 0.5rem;
-            background: #444;
-            border: 1px solid #555;
+            background: var(--input-bg);
+            border: 1px solid var(--input-border);
             border-radius: 4px;
             color: white;
             font-size: 0.75rem;
         }
-        
+
         .summary {
-            background: #333;
+            background: var(--bg-tertiary);
             padding: 0.75rem;
             border-radius: 4px;
             margin-top: 1rem;
         }
-        
+
         .summary h3 {
             font-size: 0.875rem;
             margin-bottom: 0.5rem;
         }
-        
+
         .summary-row {
             display: flex;
             justify-content: space-between;
             font-size: 0.875rem;
             margin: 0.25rem 0;
-            color: #ccc;
+            color: var(--text-bright);
         }
-        
+
         .summary-value {
             font-family: monospace;
         }
-        
+
         .empty-measurements {
             text-align: center;
             padding: 2rem;
-            color: #666;
+            color: var(--text-muted);
             font-size: 0.875rem;
         }
         
@@ -311,36 +337,36 @@
     <div class="container">
         <div class="header">
             <h1>Construction Plan Takeoff Tool</h1>
-            <div class="toolbar">
-                <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.pdf">
-                <button class="btn-primary" onclick="document.getElementById('fileInput').click()">
+            <div class="toolbar" role="toolbar" aria-label="Main toolbar">
+                <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.pdf" aria-label="Upload construction drawing file">
+                <button class="btn-primary" id="uploadBtn" aria-label="Upload construction drawing">
                     📤 Upload File
                 </button>
-                <button class="btn-secondary" id="panBtn" onclick="setTool('move')">
+                <button class="btn-secondary" id="panBtn" aria-label="Pan tool - move the drawing (shortcut: M)">
                     ✋ Pan
                 </button>
-                <button class="btn-secondary" id="linearBtn" onclick="setTool('linear')" disabled>
+                <button class="btn-secondary" id="linearBtn" disabled aria-label="Linear measurement tool - measure distances (shortcut: L)">
                     📏 Linear
                 </button>
-                <button class="btn-secondary" id="areaBtn" onclick="setTool('area')" disabled>
+                <button class="btn-secondary" id="areaBtn" disabled aria-label="Area measurement tool - measure square footage (shortcut: A)">
                     ⬛ Area
                 </button>
-                <button class="btn-warning" onclick="calibrateScale()" disabled id="calibrateBtn">
+                <button class="btn-warning" id="calibrateBtn" disabled aria-label="Set scale - calibrate measurements with known dimension (shortcut: S)">
                     🎯 Set Scale
                 </button>
-                <button class="btn-secondary" onclick="zoom(1.3)" disabled id="zoomInBtn">
+                <button class="btn-secondary" id="zoomInBtn" disabled aria-label="Zoom in (shortcut: +)">
                     🔍+ Zoom In
                 </button>
-                <button class="btn-secondary" onclick="zoom(0.77)" disabled id="zoomOutBtn">
+                <button class="btn-secondary" id="zoomOutBtn" disabled aria-label="Zoom out (shortcut: -)">
                     🔍- Zoom Out
                 </button>
-                <button class="btn-edit" id="editBtn" onclick="toggleEditMode()" disabled>
+                <button class="btn-edit" id="editBtn" disabled aria-label="Edit measurement points - reposition measurement endpoints (shortcut: E)">
                     ✏️ Edit Points
                 </button>
-                <button class="btn-success" onclick="exportCSV()" disabled id="exportBtn">
+                <button class="btn-success" id="exportBtn" disabled aria-label="Export measurements to CSV file">
                     💾 Export CSV
                 </button>
-                <button class="btn-danger" onclick="clearAll()" disabled id="clearBtn">
+                <button class="btn-danger" id="clearBtn" disabled aria-label="Clear all measurements (shortcut: C)">
                     🗑️ Clear All
                 </button>
             </div>
@@ -357,8 +383,8 @@
         
         <div class="main-content">
             <div class="canvas-area">
-                <canvas id="canvas" width="1200" height="800"></canvas>
-                <div class="empty-state" id="emptyState">
+                <canvas id="canvas" role="img" aria-label="Construction drawing canvas with measurements"></canvas>
+                <div class="empty-state" id="emptyState" role="status">
                     <div>
                         <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
@@ -374,9 +400,9 @@
                 </div>
                 
                 <div class="pdf-controls" id="pdfControls">
-                    <button class="btn-secondary" onclick="changePDFPage(-1)">◀ Prev</button>
+                    <button class="btn-secondary" id="pdfPrevBtn">◀ Prev</button>
                     <span id="pageInfo">Page 1 of 1</span>
-                    <button class="btn-secondary" onclick="changePDFPage(1)">Next ▶</button>
+                    <button class="btn-secondary" id="pdfNextBtn">Next ▶</button>
                 </div>
             </div>
             
@@ -409,7 +435,29 @@
         if (typeof pdfjsLib !== 'undefined') {
             pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
         }
-        
+
+        // Constants
+        const CONSTANTS = {
+            HANDLE_THRESHOLD: 10,           // Distance to detect handle clicks (pixels)
+            MIN_DRAG_DISTANCE: 5,           // Minimum drag distance to create measurement
+            POINT_RADIUS_NORMAL: 4,         // Point radius in normal mode
+            POINT_RADIUS_EDIT: 6,           // Point radius in edit mode
+            LABEL_OFFSET: 10,               // Label offset from measurement
+            LINE_WIDTH: 2,                  // Stroke width for measurements
+            DASH_SIZE: 5,                   // Dash length for preview
+            FONT_SIZE: 14,                  // Font size for labels
+            ZOOM_IN_FACTOR: 1.3,            // Zoom in multiplier
+            ZOOM_OUT_FACTOR: 0.77,          // Zoom out multiplier
+            MIN_SCALE: 0.2,                 // Minimum zoom level
+            MAX_SCALE: 5,                   // Maximum zoom level
+            PDF_DESIRED_WIDTH: 1000,        // Target width for PDF rendering
+            DEFAULT_OFFSET_X: 50,           // Default canvas X offset
+            DEFAULT_OFFSET_Y: 50,           // Default canvas Y offset
+            COLOR_LINEAR: '#00ff00',        // Color for linear measurements
+            COLOR_AREA: '#ff00ff',          // Color for area measurements
+            COLOR_ACTIVE: '#ffffff'         // Color for active/selected points
+        };
+
         // State
         let state = {
             image: null,
@@ -419,7 +467,7 @@
             measurements: [],
             drawing: false,
             startPoint: null,
-            offset: { x: 50, y: 50 },
+            offset: { x: CONSTANTS.DEFAULT_OFFSET_X, y: CONSTANTS.DEFAULT_OFFSET_Y },
             dragging: false,
             dragStart: { x: 0, y: 0 },
             editMode: false,
@@ -433,7 +481,22 @@
         
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        
+
+        // Make canvas responsive to window size
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            const rect = container.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            draw();
+        }
+
+        // Initial resize
+        resizeCanvas();
+
+        // Resize on window resize
+        window.addEventListener('resize', resizeCanvas);
+
         // File upload
         document.getElementById('fileInput').addEventListener('change', async (e) => {
             const file = e.target.files[0];
@@ -448,7 +511,7 @@
                     img.onload = () => {
                         state.image = img;
                         state.measurements = [];
-                        state.offset = { x: 50, y: 50 };
+                        state.offset = { x: CONSTANTS.DEFAULT_OFFSET_X, y: CONSTANTS.DEFAULT_OFFSET_Y };
                         state.scale = 1;
                         document.getElementById('emptyState').style.display = 'none';
                         updateUI();
@@ -492,7 +555,12 @@
             } catch (error) {
                 console.error('Error loading PDF:', error);
                 loadingOverlay.classList.remove('show');
-                alert('Error loading PDF: ' + error.message + '\n\nPlease try:\n1. A smaller PDF file\n2. Converting PDF to JPG/PNG\n3. A different PDF viewer');
+                alert('⚠️ Error Loading PDF\n\n' + error.message + '\n\n' +
+                      '💡 Try these solutions:\n' +
+                      '1. Use a smaller PDF file (under 10MB)\n' +
+                      '2. Convert the PDF to JPG or PNG format\n' +
+                      '3. Use a single-page PDF instead of multi-page\n' +
+                      '4. Try opening in a different browser (Chrome/Firefox recommended)');
             }
         }
         
@@ -501,9 +569,9 @@
                 if (!state.pdfDoc) return;
                 
                 const page = await state.pdfDoc.getPage(pageNumber);
-                
+
                 // Calculate scale to fit canvas nicely
-                const desiredWidth = 1000;
+                const desiredWidth = CONSTANTS.PDF_DESIRED_WIDTH;
                 const viewport = page.getViewport({ scale: 1 });
                 const scale = desiredWidth / viewport.width;
                 const scaledViewport = page.getViewport({ scale: scale });
@@ -527,7 +595,7 @@
                 img.onload = () => {
                     state.image = img;
                     state.measurements = [];
-                    state.offset = { x: 50, y: 50 };
+                    state.offset = { x: CONSTANTS.DEFAULT_OFFSET_X, y: CONSTANTS.DEFAULT_OFFSET_Y };
                     state.scale = 1;
                     document.getElementById('emptyState').style.display = 'none';
                     updateUI();
@@ -538,7 +606,9 @@
                 
             } catch (error) {
                 console.error('Error rendering PDF page:', error);
-                alert('Error rendering page: ' + error.message);
+                alert('⚠️ Error Rendering PDF Page\n\n' + error.message + '\n\n' +
+                      '💡 This page may be corrupted or too complex.\n' +
+                      'Try navigating to a different page or use a different PDF.');
             }
         }
         
@@ -583,7 +653,7 @@
         }
 
         function findHandle(x, y) {
-            const threshold = 10 / state.scale;
+            const threshold = CONSTANTS.HANDLE_THRESHOLD / state.scale;
             for (let i = state.measurements.length - 1; i >= 0; i--) {
                 const m = state.measurements[i];
                 const points = [
@@ -699,7 +769,7 @@
                 const dx = canvasX - state.startPoint.x;
                 const dy = canvasY - state.startPoint.y;
 
-                if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+                if (Math.abs(dx) > CONSTANTS.MIN_DRAG_DISTANCE || Math.abs(dy) > CONSTANTS.MIN_DRAG_DISTANCE) {
                     addMeasurement(canvasX, canvasY);
                 }
 
@@ -763,10 +833,10 @@
             
             // Draw measurements
             state.measurements.forEach((m, idx) => {
-                const color = m.type === 'linear' ? '#00ff00' : '#ff00ff';
+                const color = m.type === 'linear' ? CONSTANTS.COLOR_LINEAR : CONSTANTS.COLOR_AREA;
                 ctx.strokeStyle = color;
                 ctx.fillStyle = color;
-                ctx.lineWidth = 2 / state.scale;
+                ctx.lineWidth = CONSTANTS.LINE_WIDTH / state.scale;
 
                 ctx.beginPath();
                 if (m.type === 'linear') {
@@ -778,23 +848,23 @@
                 ctx.stroke();
 
                 // Points
-                const pointRadius = (state.editMode ? 6 : 4) / state.scale;
+                const pointRadius = (state.editMode ? CONSTANTS.POINT_RADIUS_EDIT : CONSTANTS.POINT_RADIUS_NORMAL) / state.scale;
                 const startActive = state.editMode && idx === state.activeMeasurement && state.activeHandle === 'start';
                 const endActive = state.editMode && idx === state.activeMeasurement && state.activeHandle === 'end';
                 ctx.beginPath();
-                ctx.fillStyle = startActive ? '#ffffff' : color;
+                ctx.fillStyle = startActive ? CONSTANTS.COLOR_ACTIVE : color;
                 ctx.arc(m.x1, m.y1, pointRadius, 0, Math.PI * 2);
                 ctx.fill();
                 ctx.beginPath();
-                ctx.fillStyle = endActive ? '#ffffff' : color;
+                ctx.fillStyle = endActive ? CONSTANTS.COLOR_ACTIVE : color;
                 ctx.arc(m.x2, m.y2, pointRadius, 0, Math.PI * 2);
                 ctx.fill();
 
                 // Label
-                ctx.fillStyle = '#ffffff';
-                ctx.font = `${14 / state.scale}px Arial`;
+                ctx.fillStyle = CONSTANTS.COLOR_ACTIVE;
+                ctx.font = `${CONSTANTS.FONT_SIZE / state.scale}px Arial`;
                 const labelX = (m.x1 + m.x2) / 2;
-                const labelY = (m.y1 + m.y2) / 2 - 10 / state.scale;
+                const labelY = (m.y1 + m.y2) / 2 - CONSTANTS.LABEL_OFFSET / state.scale;
                 ctx.fillText(m.label, labelX, labelY);
             });
             
@@ -805,12 +875,12 @@
             ctx.save();
             ctx.translate(state.offset.x, state.offset.y);
             ctx.scale(state.scale, state.scale);
-            
-            ctx.strokeStyle = state.tool === 'linear' ? '#00ff00' : '#ff00ff';
-            ctx.fillStyle = state.tool === 'linear' ? '#00ff00' : '#ff00ff';
-            ctx.lineWidth = 2 / state.scale;
-            ctx.setLineDash([5 / state.scale, 5 / state.scale]);
-            
+
+            ctx.strokeStyle = state.tool === 'linear' ? CONSTANTS.COLOR_LINEAR : CONSTANTS.COLOR_AREA;
+            ctx.fillStyle = state.tool === 'linear' ? CONSTANTS.COLOR_LINEAR : CONSTANTS.COLOR_AREA;
+            ctx.lineWidth = CONSTANTS.LINE_WIDTH / state.scale;
+            ctx.setLineDash([CONSTANTS.DASH_SIZE / state.scale, CONSTANTS.DASH_SIZE / state.scale]);
+
             ctx.beginPath();
             if (state.tool === 'linear') {
                 ctx.moveTo(state.startPoint.x, state.startPoint.y);
@@ -819,14 +889,14 @@
                 ctx.rect(state.startPoint.x, state.startPoint.y, x - state.startPoint.x, y - state.startPoint.y);
             }
             ctx.stroke();
-            
+
             ctx.beginPath();
-            ctx.arc(state.startPoint.x, state.startPoint.y, 4 / state.scale, 0, Math.PI * 2);
+            ctx.arc(state.startPoint.x, state.startPoint.y, CONSTANTS.POINT_RADIUS_NORMAL / state.scale, 0, Math.PI * 2);
             ctx.fill();
             ctx.beginPath();
-            ctx.arc(x, y, 4 / state.scale, 0, Math.PI * 2);
+            ctx.arc(x, y, CONSTANTS.POINT_RADIUS_NORMAL / state.scale, 0, Math.PI * 2);
             ctx.fill();
-            
+
             ctx.restore();
         }
         
@@ -884,6 +954,8 @@
             } else {
                 state.drawing = false;
                 state.startPoint = null;
+                // Auto-switch to move tool when entering edit mode
+                setTool('move');
             }
 
             updateEditModeUI();
@@ -892,31 +964,50 @@
         
         function zoom(factor) {
             state.scale *= factor;
-            state.scale = Math.max(0.2, Math.min(5, state.scale));
+            state.scale = Math.max(CONSTANTS.MIN_SCALE, Math.min(CONSTANTS.MAX_SCALE, state.scale));
             updateUI();
             draw();
         }
         
         function calibrateScale() {
             if (state.measurements.length === 0) {
-                alert('Please draw a LINEAR measurement first, then calibrate it.');
+                alert('📏 Scale Calibration\n\n' +
+                      'Please draw a LINEAR measurement first.\n\n' +
+                      '💡 Steps:\n' +
+                      '1. Click the "Linear" tool\n' +
+                      '2. Draw a line on a known dimension\n' +
+                      '3. Click "Set Scale" and enter the actual length');
                 return;
             }
-            
+
             const last = state.measurements[state.measurements.length - 1];
             if (last.type !== 'linear') {
-                alert('Last measurement must be LINEAR to calibrate.');
+                alert('📏 Scale Calibration\n\n' +
+                      'The last measurement must be LINEAR (not Area) to calibrate.\n\n' +
+                      '💡 Please:\n' +
+                      '1. Click the "Linear" tool\n' +
+                      '2. Draw a line on a known dimension\n' +
+                      '3. Try again');
                 return;
             }
-            
-            const known = prompt('Enter the actual length in feet:');
+
+            const known = prompt('📏 Set Scale\n\nEnter the actual length of the measurement in feet:');
             if (!known || isNaN(parseFloat(known))) return;
-            
+
             const knownDist = parseFloat(known);
+
+            // Validate positive non-zero value
+            if (knownDist <= 0) {
+                alert('⚠️ Invalid Input\n\n' +
+                      'Please enter a positive number greater than 0.\n\n' +
+                      'Example: 10 (for 10 feet)');
+                return;
+            }
+
             const dx = last.x2 - last.x1;
             const dy = last.y2 - last.y1;
             const pixels = Math.sqrt(dx * dx + dy * dy);
-            
+
             state.scaleFactor = knownDist / pixels;
             
             // Update all measurements
@@ -937,12 +1028,14 @@
             
             updateUI();
             draw();
-            alert('Scale calibrated successfully!');
+            alert('✅ Scale Calibrated Successfully!\n\n' +
+                  'All measurements have been recalculated.\n' +
+                  `Scale: ${state.scaleFactor.toFixed(4)} ft/pixel`);
         }
         
         function exportCSV() {
             if (state.measurements.length === 0) return;
-            
+
             const headers = ['Type', 'Value', 'Unit', 'Description'];
             const rows = state.measurements.map(m => [
                 m.type === 'linear' ? 'Linear' : 'Area',
@@ -950,12 +1043,15 @@
                 m.unit,
                 m.description || ''
             ]);
-            
+
+            // Properly escape CSV fields (replace " with "")
+            const escapeCSV = (cell) => `"${String(cell).replace(/"/g, '""')}"`;
+
             const csv = [
-                headers.join(','),
-                ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+                headers.map(escapeCSV).join(','),
+                ...rows.map(row => row.map(escapeCSV).join(','))
             ].join('\n');
-            
+
             const blob = new Blob([csv], { type: 'text/csv' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -966,7 +1062,10 @@
         }
         
         function clearAll() {
-            if (confirm('Clear all measurements?')) {
+            const count = state.measurements.length;
+            if (confirm(`🗑️ Clear All Measurements?\n\n` +
+                       `This will delete ${count} measurement${count !== 1 ? 's' : ''}.\n\n` +
+                       `⚠️ This action cannot be undone.`)) {
                 state.measurements = [];
                 updateUI();
                 draw();
@@ -1003,9 +1102,9 @@
                                 <div class="measurement-label">${m.label}</div>
                                 <div class="measurement-type">${m.type === 'linear' ? '📏 Length' : '⬛ Area'} • #${i + 1}</div>
                             </div>
-                            <button class="delete-btn" onclick="deleteMeasurement(${i})">🗑️</button>
+                            <button class="delete-btn" data-index="${i}">🗑️</button>
                         </div>
-                        <input type="text" placeholder="Description..." value="${m.description}" onchange="updateDescription(${i}, this.value)">
+                        <input type="text" class="description-input" placeholder="Description..." value="${m.description}" data-index="${i}">
                     </div>
                 `).join('') + `
                     <div class="summary">
@@ -1030,6 +1129,21 @@
             document.getElementById('exportBtn').disabled = state.measurements.length === 0;
             document.getElementById('clearBtn').disabled = state.measurements.length === 0;
 
+            // Add event listeners to dynamically created elements
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const index = parseInt(e.target.getAttribute('data-index'));
+                    deleteMeasurement(index);
+                });
+            });
+
+            document.querySelectorAll('.description-input').forEach(input => {
+                input.addEventListener('change', (e) => {
+                    const index = parseInt(e.target.getAttribute('data-index'));
+                    updateDescription(index, e.target.value);
+                });
+            });
+
             updateEditModeUI();
         }
         
@@ -1039,7 +1153,114 @@
             document.getElementById('zoomInBtn').disabled = false;
             document.getElementById('zoomOutBtn').disabled = false;
         }
-        
+
+        // Keyboard shortcuts
+        document.addEventListener('keydown', (e) => {
+            // Don't trigger shortcuts when typing in input fields
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                return;
+            }
+
+            switch(e.key.toLowerCase()) {
+                case 'escape':
+                    if (state.editMode) {
+                        toggleEditMode();
+                    }
+                    break;
+                case 'delete':
+                case 'backspace':
+                    if (state.measurements.length > 0) {
+                        e.preventDefault(); // Prevent browser back navigation
+                        if (confirm('Delete last measurement?')) {
+                            deleteMeasurement(state.measurements.length - 1);
+                        }
+                    }
+                    break;
+                case 'm':
+                    setTool('move');
+                    break;
+                case 'l':
+                    if (!document.getElementById('linearBtn').disabled) {
+                        setTool('linear');
+                    }
+                    break;
+                case 'a':
+                    if (!document.getElementById('areaBtn').disabled) {
+                        setTool('area');
+                    }
+                    break;
+                case 'e':
+                    if (!document.getElementById('editBtn').disabled) {
+                        toggleEditMode();
+                    }
+                    break;
+                case 's':
+                    if (!document.getElementById('calibrateBtn').disabled) {
+                        e.preventDefault(); // Prevent browser save dialog
+                        calibrateScale();
+                    }
+                    break;
+                case 'c':
+                    if (!document.getElementById('clearBtn').disabled) {
+                        clearAll();
+                    }
+                    break;
+                case '+':
+                case '=':
+                    if (!document.getElementById('zoomInBtn').disabled) {
+                        zoom(CONSTANTS.ZOOM_IN_FACTOR);
+                    }
+                    break;
+                case '-':
+                case '_':
+                    if (!document.getElementById('zoomOutBtn').disabled) {
+                        zoom(CONSTANTS.ZOOM_OUT_FACTOR);
+                    }
+                    break;
+            }
+        });
+
+        // Event Listeners
+        document.getElementById('uploadBtn').addEventListener('click', () => {
+            document.getElementById('fileInput').click();
+        });
+
+        document.getElementById('panBtn').addEventListener('click', () => {
+            setTool('move');
+        });
+
+        document.getElementById('linearBtn').addEventListener('click', () => {
+            setTool('linear');
+        });
+
+        document.getElementById('areaBtn').addEventListener('click', () => {
+            setTool('area');
+        });
+
+        document.getElementById('calibrateBtn').addEventListener('click', calibrateScale);
+
+        document.getElementById('zoomInBtn').addEventListener('click', () => {
+            zoom(CONSTANTS.ZOOM_IN_FACTOR);
+        });
+
+        document.getElementById('zoomOutBtn').addEventListener('click', () => {
+            zoom(CONSTANTS.ZOOM_OUT_FACTOR);
+        });
+
+        document.getElementById('editBtn').addEventListener('click', toggleEditMode);
+
+        document.getElementById('exportBtn').addEventListener('click', exportCSV);
+
+        document.getElementById('clearBtn').addEventListener('click', clearAll);
+
+        document.getElementById('pdfPrevBtn').addEventListener('click', () => {
+            changePDFPage(-1);
+        });
+
+        document.getElementById('pdfNextBtn').addEventListener('click', () => {
+            changePDFPage(1);
+        });
+
         // Initialize
         setTool('move');
         updateUI();
