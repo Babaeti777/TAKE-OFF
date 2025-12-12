@@ -59,6 +59,55 @@
         .header h1 {
             font-size: 1.5rem;
             margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .scale-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-left: auto;
+            font-size: 0.875rem;
+        }
+
+        .scale-controls label {
+            color: var(--text-secondary);
+        }
+
+        .scale-controls select,
+        .scale-controls input[type="text"] {
+            background: var(--input-bg);
+            border: 1px solid var(--input-border);
+            border-radius: 4px;
+            color: white;
+            padding: 0.375rem 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        .scale-controls select {
+            cursor: pointer;
+            min-width: 150px;
+        }
+
+        .scale-controls input[type="text"] {
+            width: 120px;
+            text-align: center;
+        }
+
+        .quick-actions {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        .tool-group {
+            display: flex;
+            gap: 0.25rem;
+            padding: 0.25rem;
+            background: var(--bg-primary);
+            border-radius: 4px;
         }
         
         .toolbar {
@@ -345,39 +394,82 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>Construction Plan Takeoff Tool</h1>
+            <h1>
+                <span>Construction Plan Takeoff Tool</span>
+                <div class="scale-controls">
+                    <label for="scalePreset">Scale:</label>
+                    <select id="scalePreset" aria-label="Select preset scale">
+                        <option value="custom">Custom</option>
+                        <option value="1/16">1/16" = 1'</option>
+                        <option value="1/8">1/8" = 1'</option>
+                        <option value="3/16">3/16" = 1'</option>
+                        <option value="1/4" selected>1/4" = 1'</option>
+                        <option value="3/8">3/8" = 1'</option>
+                        <option value="1/2">1/2" = 1'</option>
+                        <option value="3/4">3/4" = 1'</option>
+                        <option value="1">1" = 1'</option>
+                        <option value="1.5">1-1/2" = 1'</option>
+                        <option value="3">3" = 1'</option>
+                    </select>
+                    <span style="color: var(--text-tertiary);">or</span>
+                    <input type="text" id="scaleInput" placeholder="1.0 ft/px" aria-label="Enter custom scale">
+                    <button class="btn-secondary" id="applyScaleBtn" style="padding: 0.375rem 0.75rem;">Apply</button>
+                </div>
+            </h1>
             <div class="toolbar" role="toolbar" aria-label="Main toolbar">
                 <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.pdf" aria-label="Upload construction drawing file">
-                <button class="btn-primary" id="uploadBtn" aria-label="Upload construction drawing">
-                    📤 Upload File
-                </button>
-                <button class="btn-secondary" id="panBtn" aria-label="Pan tool - move the drawing (shortcut: M)">
-                    ✋ Pan
-                </button>
-                <button class="btn-secondary" id="linearBtn" disabled aria-label="Linear measurement tool - measure distances (shortcut: L)">
-                    📏 Linear
-                </button>
-                <button class="btn-secondary" id="areaBtn" disabled aria-label="Area measurement tool - measure square footage (shortcut: A)">
-                    ⬛ Area
-                </button>
-                <button class="btn-warning" id="calibrateBtn" disabled aria-label="Set scale - calibrate measurements with known dimension (shortcut: S)">
-                    🎯 Set Scale
-                </button>
-                <button class="btn-secondary" id="zoomInBtn" disabled aria-label="Zoom in (shortcut: +)">
-                    🔍+ Zoom In
-                </button>
-                <button class="btn-secondary" id="zoomOutBtn" disabled aria-label="Zoom out (shortcut: -)">
-                    🔍- Zoom Out
-                </button>
-                <button class="btn-edit" id="editBtn" disabled aria-label="Edit measurement points - reposition measurement endpoints (shortcut: E)">
-                    ✏️ Edit Points
-                </button>
-                <button class="btn-success" id="exportBtn" disabled aria-label="Export measurements to CSV file">
-                    💾 Export CSV
-                </button>
-                <button class="btn-danger" id="clearBtn" disabled aria-label="Clear all measurements (shortcut: C)">
-                    🗑️ Clear All
-                </button>
+
+                <div class="quick-actions">
+                    <button class="btn-primary" id="uploadBtn" aria-label="Upload construction drawing">
+                        📤 Upload
+                    </button>
+
+                    <div class="tool-group">
+                        <button class="btn-secondary" id="panBtn" aria-label="Pan tool (M)" title="Pan (M)">
+                            ✋
+                        </button>
+                        <button class="btn-secondary" id="linearBtn" disabled aria-label="Linear tool (L)" title="Linear (L)">
+                            📏
+                        </button>
+                        <button class="btn-secondary" id="areaBtn" disabled aria-label="Area tool (A)" title="Area (A)">
+                            ⬛
+                        </button>
+                    </div>
+
+                    <div class="tool-group">
+                        <button class="btn-secondary" id="undoBtn" disabled aria-label="Undo (Ctrl+Z)" title="Undo (Ctrl+Z)">
+                            ↶
+                        </button>
+                        <button class="btn-secondary" id="redoBtn" disabled aria-label="Redo (Ctrl+Y)" title="Redo (Ctrl+Y)">
+                            ↷
+                        </button>
+                    </div>
+
+                    <div class="tool-group">
+                        <button class="btn-secondary" id="zoomInBtn" disabled aria-label="Zoom in (+)" title="Zoom In (+)">
+                            🔍+
+                        </button>
+                        <button class="btn-secondary" id="zoomOutBtn" disabled aria-label="Zoom out (-)" title="Zoom Out (-)">
+                            🔍-
+                        </button>
+                        <button class="btn-secondary" id="fitBtn" disabled aria-label="Fit to screen" title="Fit to Screen">
+                            ⛶
+                        </button>
+                    </div>
+
+                    <button class="btn-warning" id="calibrateBtn" disabled aria-label="Calibrate scale (S)" title="Calibrate (S)">
+                        🎯 Calibrate
+                    </button>
+                    <button class="btn-edit" id="editBtn" disabled aria-label="Edit points (E)" title="Edit (E)">
+                        ✏️ Edit
+                    </button>
+                    <button class="btn-success" id="exportBtn" disabled aria-label="Export CSV" title="Export CSV">
+                        💾 Export
+                    </button>
+                    <button class="btn-danger" id="clearBtn" disabled aria-label="Clear all (C)" title="Clear All (C)">
+                        🗑️
+                    </button>
+                </div>
             </div>
             <div class="edit-mode-indicator" id="editIndicator">
                 ✏️ Edit mode active — click measurement points to reposition them.
@@ -424,22 +516,25 @@
                 </div>
                 <div class="sidebar-content">
                     <div class="instructions">
-                        <h3>Quick Start:</h3>
+                        <h3>🚀 Quick Start:</h3>
                         <ol>
-                            <li>Upload JPG/PNG/PDF drawing</li>
-                            <li>Click "Linear" tool</li>
-                            <li>Draw line on known dimension</li>
-                            <li>Click "Set Scale", enter real length</li>
-                            <li>Continue measuring</li>
-                            <li>Export to CSV</li>
+                            <li>📤 Upload your drawing</li>
+                            <li>📐 Select a preset scale OR calibrate manually</li>
+                            <li>📏 Click Linear or ⬛ Area to measure</li>
+                            <li>💾 Export when done!</li>
                         </ol>
-                        <h3 style="margin-top: 0.75rem;">Area Tool (Polygon):</h3>
-                        <ol>
-                            <li>Click to add each corner point</li>
-                            <li>Click near first point to close</li>
-                            <li>Or press <kbd>Enter</kbd> to complete</li>
-                            <li>Press <kbd>Esc</kbd> to cancel</li>
-                        </ol>
+                        <h3 style="margin-top: 0.75rem;">⬛ Polygon Tool:</h3>
+                        <ul style="margin-left: 1rem; list-style: none;">
+                            <li>• Click each corner</li>
+                            <li>• Close: Click first point or <kbd>Enter</kbd></li>
+                            <li>• Cancel: <kbd>Esc</kbd></li>
+                        </ul>
+                        <h3 style="margin-top: 0.75rem;">⌨️ Shortcuts:</h3>
+                        <ul style="margin-left: 1rem; list-style: none;">
+                            <li>• <kbd>M</kbd> Pan  <kbd>L</kbd> Linear  <kbd>A</kbd> Area</li>
+                            <li>• <kbd>Ctrl+Z</kbd> Undo  <kbd>Ctrl+Y</kbd> Redo</li>
+                            <li>• <kbd>E</kbd> Edit  <kbd>+/-</kbd> Zoom</li>
+                        </ul>
                     </div>
                     
                     <div id="measurementList"></div>
@@ -498,9 +593,183 @@
             currentPage: 1,
             totalPages: 1
         };
+
+        // Undo/Redo state
+        let history = {
+            states: [],
+            currentIndex: -1,
+            maxStates: 50
+        };
         
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
+
+        // Undo/Redo System
+        function saveState() {
+            // Create a snapshot of current measurements
+            const snapshot = {
+                measurements: JSON.parse(JSON.stringify(state.measurements)),
+                scaleFactor: state.scaleFactor
+            };
+
+            // Remove any states after current index
+            history.states = history.states.slice(0, history.currentIndex + 1);
+
+            // Add new state
+            history.states.push(snapshot);
+
+            // Limit history size
+            if (history.states.length > history.maxStates) {
+                history.states.shift();
+            } else {
+                history.currentIndex++;
+            }
+
+            updateUndoRedoButtons();
+            autoSave();
+        }
+
+        function undo() {
+            if (history.currentIndex > 0) {
+                history.currentIndex--;
+                restoreState(history.states[history.currentIndex]);
+            }
+        }
+
+        function redo() {
+            if (history.currentIndex < history.states.length - 1) {
+                history.currentIndex++;
+                restoreState(history.states[history.currentIndex]);
+            }
+        }
+
+        function restoreState(snapshot) {
+            state.measurements = JSON.parse(JSON.stringify(snapshot.measurements));
+            state.scaleFactor = snapshot.scaleFactor;
+            updateUI();
+            draw();
+            updateUndoRedoButtons();
+            autoSave();
+        }
+
+        function updateUndoRedoButtons() {
+            document.getElementById('undoBtn').disabled = history.currentIndex <= 0;
+            document.getElementById('redoBtn').disabled = history.currentIndex >= history.states.length - 1;
+        }
+
+        // Auto-save to localStorage
+        function autoSave() {
+            try {
+                const saveData = {
+                    measurements: state.measurements,
+                    scaleFactor: state.scaleFactor,
+                    timestamp: Date.now()
+                };
+                localStorage.setItem('takeoff-autosave', JSON.stringify(saveData));
+            } catch (e) {
+                console.warn('Auto-save failed:', e);
+            }
+        }
+
+        function loadAutoSave() {
+            try {
+                const saved = localStorage.getItem('takeoff-autosave');
+                if (saved) {
+                    const data = JSON.parse(saved);
+                    const age = Date.now() - data.timestamp;
+                    const hours = age / (1000 * 60 * 60);
+
+                    if (hours < 24 && data.measurements && data.measurements.length > 0) {
+                        if (confirm(`📋 Found auto-saved work from ${Math.round(hours)} hour(s) ago with ${data.measurements.length} measurements.\n\nRestore it?`)) {
+                            state.measurements = data.measurements;
+                            state.scaleFactor = data.scaleFactor || 1;
+                            saveState(); // Add to undo history
+                            updateUI();
+                            draw();
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('Auto-load failed:', e);
+            }
+        }
+
+        // Preset Scale Functions
+        function applyPresetScale(presetValue) {
+            // Convert architectural scale to ft/px ratio
+            // Architectural scales are in format "X" = 1' (where X is in inches)
+            const scales = {
+                '1/16': 1 / 192,    // 1/16" = 1' → 192 pixels = 1 foot
+                '1/8': 1 / 96,      // 1/8" = 1' → 96 pixels = 1 foot
+                '3/16': 1 / 64,     // 3/16" = 1' → 64 pixels = 1 foot
+                '1/4': 1 / 48,      // 1/4" = 1' → 48 pixels = 1 foot
+                '3/8': 1 / 32,      // 3/8" = 1' → 32 pixels = 1 foot
+                '1/2': 1 / 24,      // 1/2" = 1' → 24 pixels = 1 foot
+                '3/4': 1 / 16,      // 3/4" = 1' → 16 pixels = 1 foot
+                '1': 1 / 12,        // 1" = 1' → 12 pixels = 1 foot
+                '1.5': 1 / 8,       // 1.5" = 1' → 8 pixels = 1 foot
+                '3': 1 / 4          // 3" = 1' → 4 pixels = 1 foot
+            };
+
+            if (presetValue && presetValue !== 'custom' && scales[presetValue]) {
+                state.scaleFactor = scales[presetValue];
+
+                // Recalculate all measurements
+                state.measurements.forEach(m => {
+                    recalculateMeasurement(m);
+                });
+
+                saveState();
+                updateUI();
+                draw();
+
+                return true;
+            }
+            return false;
+        }
+
+        function applyCustomScale() {
+            const input = document.getElementById('scaleInput').value.trim();
+            if (!input) return;
+
+            const value = parseFloat(input);
+            if (!isNaN(value) && value > 0) {
+                state.scaleFactor = value;
+
+                // Recalculate all measurements
+                state.measurements.forEach(m => {
+                    recalculateMeasurement(m);
+                });
+
+                saveState();
+                updateUI();
+                draw();
+
+                document.getElementById('scalePreset').value = 'custom';
+            } else {
+                alert('⚠️ Invalid Scale\n\nPlease enter a positive number (e.g., 0.0208 for 1/4" = 1\')');
+            }
+        }
+
+        // Fit to screen
+        function fitToScreen() {
+            if (!state.image) return;
+
+            const canvasWidth = canvas.width - 100;
+            const canvasHeight = canvas.height - 100;
+            const imageWidth = state.image.width;
+            const imageHeight = state.image.height;
+
+            const scaleX = canvasWidth / imageWidth;
+            const scaleY = canvasHeight / imageHeight;
+            const newScale = Math.min(scaleX, scaleY);
+
+            state.scale = newScale;
+            state.offset = { x: 50, y: 50 };
+
+            updateUI();
+            draw();
+        }
 
         // Make canvas responsive to window size
         function resizeCanvas() {
@@ -917,6 +1186,7 @@
             state.measurements.push(measurement);
             state.polygonPoints = [];
             state.drawing = false;
+            saveState();
             updateUI();
             draw();
         }
@@ -988,6 +1258,7 @@
             }
             
             state.measurements.push(measurement);
+            saveState();
             updateUI();
         }
         
@@ -1289,7 +1560,8 @@
             state.measurements.forEach(m => {
                 recalculateMeasurement(m);
             });
-            
+
+            saveState();
             updateUI();
             draw();
             alert('✅ Scale Calibrated Successfully!\n\n' +
@@ -1329,8 +1601,9 @@
             const count = state.measurements.length;
             if (confirm(`🗑️ Clear All Measurements?\n\n` +
                        `This will delete ${count} measurement${count !== 1 ? 's' : ''}.\n\n` +
-                       `⚠️ This action cannot be undone.`)) {
+                       `⚠️ You can undo this action with Ctrl+Z.`)) {
                 state.measurements = [];
+                saveState();
                 updateUI();
                 draw();
             }
@@ -1338,12 +1611,14 @@
         
         function deleteMeasurement(idx) {
             state.measurements.splice(idx, 1);
+            saveState();
             updateUI();
             draw();
         }
         
         function updateDescription(idx, desc) {
             state.measurements[idx].description = desc;
+            saveState();
         }
         
         function updateUI() {
@@ -1416,11 +1691,24 @@
             document.getElementById('areaBtn').disabled = false;
             document.getElementById('zoomInBtn').disabled = false;
             document.getElementById('zoomOutBtn').disabled = false;
+            document.getElementById('fitBtn').disabled = false;
         }
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
-            // Don't trigger shortcuts when typing in input fields
+            // Ctrl+Z (Undo) and Ctrl+Y (Redo) work even in input fields
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
+                e.preventDefault();
+                undo();
+                return;
+            }
+            if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
+                e.preventDefault();
+                redo();
+                return;
+            }
+
+            // Don't trigger other shortcuts when typing in input fields
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
                 return;
             }
@@ -1557,9 +1845,31 @@
 
         document.getElementById('pdfFitBtn').addEventListener('click', fitPDFToWidth);
 
+        // New controls
+        document.getElementById('scalePreset').addEventListener('change', (e) => {
+            applyPresetScale(e.target.value);
+        });
+
+        document.getElementById('applyScaleBtn').addEventListener('click', applyCustomScale);
+
+        document.getElementById('scaleInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                applyCustomScale();
+            }
+        });
+
+        document.getElementById('undoBtn').addEventListener('click', undo);
+        document.getElementById('redoBtn').addEventListener('click', redo);
+        document.getElementById('fitBtn').addEventListener('click', fitToScreen);
+
         // Initialize
         setTool('move');
         updateUI();
+        loadAutoSave();
+
+        // Save initial state
+        saveState();
     </script>
 </body>
 </html>
