@@ -529,11 +529,17 @@
                             <li>• Close: Click first point or <kbd>Enter</kbd></li>
                             <li>• Cancel: <kbd>Esc</kbd></li>
                         </ul>
-                        <h3 style="margin-top: 0.75rem;">⌨️ Shortcuts:</h3>
-                        <ul style="margin-left: 1rem; list-style: none;">
-                            <li>• <kbd>M</kbd> Pan  <kbd>L</kbd> Linear  <kbd>A</kbd> Area</li>
-                            <li>• <kbd>Ctrl+Z</kbd> Undo  <kbd>Ctrl+Y</kbd> Redo</li>
-                            <li>• <kbd>E</kbd> Edit  <kbd>+/-</kbd> Zoom</li>
+                        <h3 style="margin-top: 0.75rem;">⌨️ Keyboard Shortcuts:</h3>
+                        <ul style="margin-left: 1rem; list-style: none; font-size: 0.7rem;">
+                            <li><strong>Tools:</strong></li>
+                            <li>• <kbd>1</kbd>/<kbd>M</kbd> Pan  <kbd>2</kbd>/<kbd>L</kbd> Linear  <kbd>3</kbd>/<kbd>A</kbd> Area</li>
+                            <li>• <kbd>Space</kbd> Quick toggle pan  <kbd>Tab</kbd> Cycle tools</li>
+                            <li><strong>Actions:</strong></li>
+                            <li>• <kbd>Ctrl+Z</kbd>/<kbd>U</kbd> Undo  <kbd>Ctrl+Y</kbd>/<kbd>R</kbd> Redo</li>
+                            <li>• <kbd>Ctrl+S</kbd>/<kbd>X</kbd> Export  <kbd>E</kbd> Edit mode</li>
+                            <li><strong>Navigation:</strong></li>
+                            <li>• <kbd>+/-</kbd> Zoom  <kbd>0</kbd> Reset zoom  <kbd>F</kbd> Fit</li>
+                            <li>• <kbd>↑↓←→</kbd> Pan (hold <kbd>Shift</kbd> for fast)</li>
                         </ul>
                     </div>
                     
@@ -1708,8 +1714,19 @@
                 return;
             }
 
+            // Ctrl+S to export (save)
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+                e.preventDefault();
+                if (state.measurements.length > 0) {
+                    exportCSV();
+                }
+                return;
+            }
+
             // Don't trigger other shortcuts when typing in input fields
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                // Allow Tab in input fields
+                if (e.key === 'Tab') return;
                 return;
             }
 
@@ -1740,15 +1757,28 @@
                         }
                     }
                     break;
+                case ' ':
+                    // Space bar: Quick toggle to pan tool
+                    e.preventDefault();
+                    if (state.tool !== 'move') {
+                        state.previousTool = state.tool;
+                        setTool('move');
+                    } else if (state.previousTool) {
+                        setTool(state.previousTool);
+                    }
+                    break;
                 case 'm':
+                case '1':
                     setTool('move');
                     break;
                 case 'l':
+                case '2':
                     if (!document.getElementById('linearBtn').disabled) {
                         setTool('linear');
                     }
                     break;
                 case 'a':
+                case '3':
                     if (!document.getElementById('areaBtn').disabled) {
                         setTool('area');
                     }
@@ -1759,26 +1789,96 @@
                     }
                     break;
                 case 's':
-                    if (!document.getElementById('calibrateBtn').disabled) {
+                    if (!e.ctrlKey && !e.metaKey && !document.getElementById('calibrateBtn').disabled) {
                         e.preventDefault(); // Prevent browser save dialog
                         calibrateScale();
                     }
                     break;
-                case 'c':
-                    if (!document.getElementById('clearBtn').disabled) {
-                        clearAll();
+                case 'f':
+                    // F: Fit to screen
+                    if (!document.getElementById('fitBtn').disabled) {
+                        e.preventDefault();
+                        fitToScreen();
+                    }
+                    break;
+                case '0':
+                    // 0: Reset zoom to 100%
+                    if (state.image) {
+                        state.scale = 1;
+                        updateUI();
+                        draw();
+                    }
+                    break;
+                case 'tab':
+                    // Tab: Cycle through tools
+                    e.preventDefault();
+                    const tools = ['move', 'linear', 'area'];
+                    const currentIndex = tools.indexOf(state.tool);
+                    let nextIndex = (currentIndex + (e.shiftKey ? -1 : 1) + tools.length) % tools.length;
+
+                    // Skip disabled tools
+                    while ((tools[nextIndex] === 'linear' && document.getElementById('linearBtn').disabled) ||
+                           (tools[nextIndex] === 'area' && document.getElementById('areaBtn').disabled)) {
+                        nextIndex = (nextIndex + (e.shiftKey ? -1 : 1) + tools.length) % tools.length;
+                        if (nextIndex === currentIndex) break; // Prevent infinite loop
+                    }
+                    setTool(tools[nextIndex]);
+                    break;
+                case 'arrowup':
+                case 'arrowdown':
+                case 'arrowleft':
+                case 'arrowright':
+                    // Arrow keys: Pan the canvas
+                    if (state.image) {
+                        e.preventDefault();
+                        const panAmount = e.shiftKey ? 50 : 10;
+                        switch(e.key.toLowerCase()) {
+                            case 'arrowup':
+                                state.offset.y += panAmount;
+                                break;
+                            case 'arrowdown':
+                                state.offset.y -= panAmount;
+                                break;
+                            case 'arrowleft':
+                                state.offset.x += panAmount;
+                                break;
+                            case 'arrowright':
+                                state.offset.x -= panAmount;
+                                break;
+                        }
+                        draw();
                     }
                     break;
                 case '+':
                 case '=':
                     if (!document.getElementById('zoomInBtn').disabled) {
+                        e.preventDefault();
                         zoom(CONSTANTS.ZOOM_IN_FACTOR);
                     }
                     break;
                 case '-':
                 case '_':
                     if (!document.getElementById('zoomOutBtn').disabled) {
+                        e.preventDefault();
                         zoom(CONSTANTS.ZOOM_OUT_FACTOR);
+                    }
+                    break;
+                case 'r':
+                    // R: Redo (alternate)
+                    if (!e.ctrlKey && !e.metaKey) {
+                        redo();
+                    }
+                    break;
+                case 'u':
+                    // U: Undo (alternate)
+                    if (!e.ctrlKey && !e.metaKey) {
+                        undo();
+                    }
+                    break;
+                case 'x':
+                    // X: Export CSV
+                    if (!e.ctrlKey && !e.metaKey && state.measurements.length > 0) {
+                        exportCSV();
                     }
                     break;
             }
