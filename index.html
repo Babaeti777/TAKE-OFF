@@ -1049,6 +1049,14 @@
         canvas.addEventListener('mousemove', handleMouseMove);
         canvas.addEventListener('mouseup', handleMouseUp);
         canvas.addEventListener('mouseleave', handleMouseUp);
+        canvas.addEventListener('wheel', handleWheel, { passive: false });
+
+        // Prevent middle button default behavior (auto-scroll)
+        canvas.addEventListener('mousedown', (e) => {
+            if (e.button === 1) {
+                e.preventDefault();
+            }
+        });
         
         function getEventCanvasPosition(e) {
             const rect = canvas.getBoundingClientRect();
@@ -1151,10 +1159,55 @@
             }
         }
 
+        // Mouse wheel zoom handler
+        function handleWheel(e) {
+            if (!state.image) return;
+
+            e.preventDefault();
+
+            // Get mouse position before zoom
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = (e.clientX - rect.left) * (canvas.width / rect.width);
+            const mouseY = (e.clientY - rect.top) * (canvas.height / rect.height);
+
+            // Calculate zoom factor
+            const zoomIntensity = 0.1;
+            const delta = e.deltaY < 0 ? 1 : -1;
+            const factor = 1 + delta * zoomIntensity;
+
+            // Calculate new scale
+            const oldScale = state.scale;
+            const newScale = Math.max(CONSTANTS.MIN_SCALE, Math.min(CONSTANTS.MAX_SCALE, state.scale * factor));
+
+            if (newScale === oldScale) return; // Hit zoom limit
+
+            // Adjust offset to zoom towards mouse cursor
+            const scaleChange = newScale / oldScale;
+            state.offset.x = mouseX - (mouseX - state.offset.x) * scaleChange;
+            state.offset.y = mouseY - (mouseY - state.offset.y) * scaleChange;
+            state.scale = newScale;
+
+            updateUI();
+            draw();
+        }
+
         function handleMouseDown(e) {
             if (!state.image) return;
 
             const { pixelX, pixelY, canvasX, canvasY } = getEventCanvasPosition(e);
+
+            // Middle mouse button (button 1) always pans
+            if (e.button === 1) {
+                e.preventDefault();
+                state.dragging = true;
+                state.dragStart = { x: pixelX, y: pixelY };
+                state.originalOffset = { ...state.offset };
+                canvas.style.cursor = 'grabbing';
+                return;
+            }
+
+            // Left button (button 0) only
+            if (e.button !== 0) return;
 
             if (state.editMode) {
                 const handle = findHandle(canvasX, canvasY);
@@ -1287,6 +1340,10 @@
 
             if (state.dragging) {
                 state.dragging = false;
+                // Restore cursor after middle button pan
+                if (e.button === 1 || e.type === 'mouseleave') {
+                    canvas.style.cursor = state.tool === 'move' ? 'move' : 'crosshair';
+                }
             } else if (state.drawing && state.startPoint && state.tool === 'linear') {
                 // Only handle mouseUp for linear measurements
                 const { canvasX, canvasY } = getEventCanvasPosition(e);
