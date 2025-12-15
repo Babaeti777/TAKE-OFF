@@ -463,14 +463,25 @@
                     <button class="btn-edit" id="editBtn" disabled aria-label="Edit points (E)" title="Edit (E)">
                         ✏️ Edit
                     </button>
+
+                    <div class="tool-group">
+                        <button class="btn-success" id="saveProjectBtn" disabled aria-label="Save project" title="Save Project">
+                            💾 Save
+                        </button>
+                        <button class="btn-primary" id="loadProjectBtn" aria-label="Load project" title="Load Project">
+                            📂 Load
+                        </button>
+                    </div>
+
                     <button class="btn-success" id="exportBtn" disabled aria-label="Export CSV" title="Export CSV">
-                        💾 Export
+                        📊 CSV
                     </button>
                     <button class="btn-danger" id="clearBtn" disabled aria-label="Clear all (C)" title="Clear All (C)">
                         🗑️
                     </button>
                 </div>
             </div>
+            <input type="file" id="projectFileInput" accept=".takeoff,.json" style="display: none;" aria-label="Load project file">
             <div class="edit-mode-indicator" id="editIndicator">
                 ✏️ Edit mode active — click measurement points to reposition them.
             </div>
@@ -1698,6 +1709,170 @@
             document.getElementById('zoomInBtn').disabled = false;
             document.getElementById('zoomOutBtn').disabled = false;
             document.getElementById('fitBtn').disabled = false;
+            document.getElementById('saveProjectBtn').disabled = false;
+        }
+
+        // Project Save/Load Functions
+        function saveProject() {
+            if (!state.image) {
+                alert('⚠️ No Project to Save\n\nPlease upload an image or PDF first.');
+                return;
+            }
+
+            try {
+                // Get image as base64
+                let imageData = '';
+                if (state.image.src && state.image.src.startsWith('data:')) {
+                    // Already a data URL
+                    imageData = state.image.src;
+                } else {
+                    // Convert to data URL
+                    const tempCanvas = document.createElement('canvas');
+                    tempCanvas.width = state.image.width;
+                    tempCanvas.height = state.image.height;
+                    const tempCtx = tempCanvas.getContext('2d');
+                    tempCtx.drawImage(state.image, 0, 0);
+                    imageData = tempCanvas.toDataURL('image/png');
+                }
+
+                // Create project data
+                const projectData = {
+                    version: '1.0',
+                    timestamp: Date.now(),
+                    date: new Date().toISOString(),
+                    image: imageData,
+                    measurements: state.measurements,
+                    scaleFactor: state.scaleFactor,
+                    scale: state.scale,
+                    offset: state.offset,
+                    pdfInfo: state.pdfDoc ? {
+                        currentPage: state.currentPage,
+                        totalPages: state.totalPages
+                    } : null
+                };
+
+                // Convert to JSON
+                const json = JSON.stringify(projectData);
+
+                // Create blob and download
+                const blob = new Blob([json], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+
+                // Generate filename with timestamp
+                const dateStr = new Date().toISOString().split('T')[0];
+                const timeStr = new Date().toTimeString().split(' ')[0].replace(/:/g, '-');
+                a.download = `takeoff-project-${dateStr}-${timeStr}.takeoff`;
+
+                a.click();
+                URL.revokeObjectURL(url);
+
+                alert('✅ Project Saved!\n\nYour project has been exported as a .takeoff file.\n\n' +
+                      '💡 You can now load this file on any device or browser to continue your work.');
+            } catch (error) {
+                console.error('Error saving project:', error);
+                alert('⚠️ Error Saving Project\n\n' + error.message + '\n\n' +
+                      '💡 The image file may be too large. Try:\n' +
+                      '1. Using a smaller image\n' +
+                      '2. Reducing image resolution\n' +
+                      '3. Converting multi-page PDFs to single pages');
+            }
+        }
+
+        function loadProject() {
+            document.getElementById('projectFileInput').click();
+        }
+
+        function handleProjectFileLoad(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                try {
+                    const json = event.target.result;
+                    const projectData = JSON.parse(json);
+
+                    // Validate project data
+                    if (!projectData.version || !projectData.image) {
+                        throw new Error('Invalid project file format');
+                    }
+
+                    // Show loading overlay
+                    const loadingOverlay = document.getElementById('loadingOverlay');
+                    const loadingText = document.getElementById('loadingText');
+                    loadingOverlay.classList.add('show');
+                    loadingText.textContent = 'Loading project...';
+
+                    // Load image from base64
+                    const img = new Image();
+                    img.onload = () => {
+                        // Restore state
+                        state.image = img;
+                        state.measurements = projectData.measurements || [];
+                        state.scaleFactor = projectData.scaleFactor || 1;
+                        state.scale = projectData.scale || 1;
+                        state.offset = projectData.offset || { x: CONSTANTS.DEFAULT_OFFSET_X, y: CONSTANTS.DEFAULT_OFFSET_Y };
+                        state.pdfDoc = null; // PDF documents can't be saved/loaded
+
+                        if (projectData.pdfInfo) {
+                            // Note: We can't restore PDF documents, only the rendered image
+                            state.currentPage = 1;
+                            state.totalPages = 1;
+                        }
+
+                        // Hide empty state
+                        document.getElementById('emptyState').style.display = 'none';
+
+                        // Initialize history with loaded state
+                        history.states = [];
+                        history.currentIndex = -1;
+                        saveState();
+
+                        // Update UI and draw
+                        enableButtons();
+                        updateUI();
+                        draw();
+
+                        // Hide loading overlay
+                        loadingOverlay.classList.remove('show');
+
+                        // Show success message
+                        const projectDate = new Date(projectData.timestamp);
+                        const dateStr = projectDate.toLocaleDateString();
+                        const timeStr = projectDate.toLocaleTimeString();
+                        alert(`✅ Project Loaded Successfully!\n\n` +
+                              `Project from: ${dateStr} ${timeStr}\n` +
+                              `Measurements: ${state.measurements.length}\n` +
+                              `Scale: ${state.scaleFactor.toFixed(4)} ft/px\n\n` +
+                              `💡 You can now continue working on your takeoff.`);
+                    };
+
+                    img.onerror = () => {
+                        loadingOverlay.classList.remove('show');
+                        throw new Error('Failed to load image from project file');
+                    };
+
+                    img.src = projectData.image;
+
+                } catch (error) {
+                    console.error('Error loading project:', error);
+                    document.getElementById('loadingOverlay').classList.remove('show');
+                    alert('⚠️ Error Loading Project\n\n' + error.message + '\n\n' +
+                          '💡 Make sure the file is a valid .takeoff project file.\n' +
+                          'Only load project files created by this application.');
+                }
+            };
+
+            reader.onerror = () => {
+                alert('⚠️ Error Reading File\n\nCould not read the project file.');
+            };
+
+            reader.readAsText(file);
+
+            // Reset file input so the same file can be loaded again
+            e.target.value = '';
         }
 
         // Keyboard shortcuts
@@ -1962,6 +2137,11 @@
         document.getElementById('undoBtn').addEventListener('click', undo);
         document.getElementById('redoBtn').addEventListener('click', redo);
         document.getElementById('fitBtn').addEventListener('click', fitToScreen);
+
+        // Project save/load event listeners
+        document.getElementById('saveProjectBtn').addEventListener('click', saveProject);
+        document.getElementById('loadProjectBtn').addEventListener('click', loadProject);
+        document.getElementById('projectFileInput').addEventListener('change', handleProjectFileLoad);
 
         // Initialize
         setTool('move');
