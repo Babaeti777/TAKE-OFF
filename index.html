@@ -177,12 +177,13 @@
         
         .main-content {
             flex: 1;
-            display: flex;
+            position: relative;
             overflow: hidden;
         }
-        
+
         .canvas-area {
-            flex: 1;
+            width: 100%;
+            height: 100%;
             position: relative;
             background: var(--bg-primary);
         }
@@ -260,18 +261,80 @@
         }
         
         .sidebar {
-            width: 320px;
+            position: fixed;
+            right: 0;
+            top: 0;
+            bottom: 0;
+            width: 380px;
             background: var(--bg-secondary);
-            border-left: 1px solid var(--border-color);
+            border-left: 2px solid var(--border-color);
             display: flex;
             flex-direction: column;
+            z-index: 100;
+            transition: transform 0.3s ease;
+            box-shadow: -4px 0 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .sidebar.collapsed {
+            transform: translateX(380px);
+        }
+
+        .sidebar-toggle {
+            position: fixed;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            background: var(--bg-secondary);
+            border: 2px solid var(--border-color);
+            border-right: none;
+            border-radius: 8px 0 0 8px;
+            padding: 1rem 0.5rem;
+            cursor: pointer;
+            z-index: 99;
+            transition: all 0.3s ease;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            box-shadow: -2px 0 8px rgba(0, 0, 0, 0.2);
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .sidebar-toggle:hover {
+            background: var(--bg-tertiary);
+            padding-right: 0.75rem;
+        }
+
+        .sidebar-toggle.hidden {
+            opacity: 0;
+            pointer-events: none;
         }
 
         .sidebar-header {
             padding: 1rem;
             border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
-        
+
+        .sidebar-close-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.25rem 0.5rem;
+            line-height: 1;
+            transition: color 0.2s;
+        }
+
+        .sidebar-close-btn:hover {
+            color: var(--text-primary);
+        }
+
         .sidebar-content {
             flex: 1;
             overflow-y: auto;
@@ -521,9 +584,12 @@
                 </div>
             </div>
             
-            <div class="sidebar">
+            <button class="sidebar-toggle hidden" id="sidebarToggle">📊 Measurements</button>
+
+            <div class="sidebar" id="sidebar">
                 <div class="sidebar-header">
-                    <h2>Measurements</h2>
+                    <h2>📊 Measurements & Info</h2>
+                    <button class="sidebar-close-btn" id="sidebarClose" aria-label="Close sidebar">×</button>
                 </div>
                 <div class="sidebar-content">
                     <div class="instructions">
@@ -548,12 +614,13 @@
                             <li><strong>Actions:</strong></li>
                             <li>• <kbd>Ctrl+Z</kbd>/<kbd>U</kbd> Undo  <kbd>Ctrl+Y</kbd>/<kbd>R</kbd> Redo</li>
                             <li>• <kbd>Ctrl+S</kbd>/<kbd>X</kbd> Export  <kbd>E</kbd> Edit mode</li>
+                            <li>• <kbd>I</kbd>/<kbd>P</kbd> Toggle this panel</li>
                             <li><strong>Navigation:</strong></li>
                             <li>• <kbd>+/-</kbd> Zoom  <kbd>0</kbd> Reset zoom  <kbd>F</kbd> Fit</li>
                             <li>• <kbd>↑↓←→</kbd> Pan (hold <kbd>Shift</kbd> for fast)</li>
                         </ul>
                     </div>
-                    
+
                     <div id="measurementList"></div>
                 </div>
             </div>
@@ -2056,6 +2123,11 @@
                         exportCSV();
                     }
                     break;
+                case 'i':
+                case 'p':
+                    // I or P: Toggle sidebar
+                    toggleSidebar();
+                    break;
             }
         });
 
@@ -2142,6 +2214,46 @@
         document.getElementById('saveProjectBtn').addEventListener('click', saveProject);
         document.getElementById('loadProjectBtn').addEventListener('click', loadProject);
         document.getElementById('projectFileInput').addEventListener('change', handleProjectFileLoad);
+
+        // Sidebar toggle functionality
+        let sidebarOpen = true;
+        const sidebar = document.getElementById('sidebar');
+        const sidebarToggle = document.getElementById('sidebarToggle');
+        const sidebarClose = document.getElementById('sidebarClose');
+
+        function toggleSidebar() {
+            sidebarOpen = !sidebarOpen;
+            if (sidebarOpen) {
+                sidebar.classList.remove('collapsed');
+                sidebarToggle.classList.add('hidden');
+            } else {
+                sidebar.classList.add('collapsed');
+                sidebarToggle.classList.remove('hidden');
+            }
+            // Save preference to localStorage
+            try {
+                localStorage.setItem('sidebar-open', sidebarOpen);
+            } catch (e) {
+                // Ignore localStorage errors
+            }
+        }
+
+        sidebarToggle.addEventListener('click', toggleSidebar);
+        sidebarClose.addEventListener('click', toggleSidebar);
+
+        // Restore sidebar state from localStorage
+        try {
+            const savedState = localStorage.getItem('sidebar-open');
+            if (savedState !== null) {
+                sidebarOpen = savedState === 'true';
+                if (!sidebarOpen) {
+                    sidebar.classList.add('collapsed');
+                    sidebarToggle.classList.remove('hidden');
+                }
+            }
+        } catch (e) {
+            // Ignore localStorage errors
+        }
 
         // Initialize
         setTool('move');
