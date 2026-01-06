@@ -389,6 +389,30 @@
             font-family: monospace;
             font-size: 0.7rem;
         }
+
+        input[type="color"] {
+            cursor: pointer;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            border: 1px solid var(--input-border);
+            border-radius: 4px;
+            background: transparent;
+        }
+
+        input[type="color"]::-webkit-color-swatch-wrapper {
+            padding: 2px;
+        }
+
+        input[type="color"]::-webkit-color-swatch {
+            border: none;
+            border-radius: 3px;
+        }
+
+        input[type="color"]::-moz-color-swatch {
+            border: none;
+            border-radius: 3px;
+        }
     </style>
 </head>
 <body>
@@ -433,6 +457,9 @@
                         </button>
                         <button class="btn-secondary" id="areaBtn" disabled aria-label="Area tool (A)" title="Area (A)">
                             ⬛
+                        </button>
+                        <button class="btn-secondary" id="countBtn" disabled aria-label="Count tool (Q)" title="Count (Q)">
+                            🔢
                         </button>
                     </div>
 
@@ -531,7 +558,7 @@
                         </ul>
                         <h3 style="margin-top: 0.75rem;">⌨️ Shortcuts:</h3>
                         <ul style="margin-left: 1rem; list-style: none;">
-                            <li>• <kbd>M</kbd> Pan  <kbd>L</kbd> Linear  <kbd>A</kbd> Area</li>
+                            <li>• <kbd>M</kbd> Pan  <kbd>L</kbd> Linear  <kbd>A</kbd> Area  <kbd>Q</kbd> Count</li>
                             <li>• <kbd>Ctrl+Z</kbd> Undo  <kbd>Ctrl+Y</kbd> Redo</li>
                             <li>• <kbd>E</kbd> Edit  <kbd>+/-</kbd> Zoom</li>
                         </ul>
@@ -564,12 +591,15 @@
             ZOOM_OUT_FACTOR: 0.77,          // Zoom out multiplier
             MIN_SCALE: 0.2,                 // Minimum zoom level
             MAX_SCALE: 5,                   // Maximum zoom level
-            PDF_DESIRED_WIDTH: 1000,        // Target width for PDF rendering
+            PDF_BASE_WIDTH: 1000,           // Base width for PDF rendering
+            PDF_QUALITY_MULTIPLIER: 2,      // Quality multiplier for zoomed PDFs
             DEFAULT_OFFSET_X: 50,           // Default canvas X offset
             DEFAULT_OFFSET_Y: 50,           // Default canvas Y offset
             COLOR_LINEAR: '#00ff00',        // Color for linear measurements
             COLOR_AREA: '#ff00ff',          // Color for area measurements
-            COLOR_ACTIVE: '#ffffff'         // Color for active/selected points
+            COLOR_COUNT: '#00ffff',         // Color for count measurements
+            COLOR_ACTIVE: '#ffffff',        // Color for active/selected points
+            COUNT_MARKER_SIZE: 8            // Size of count markers
         };
 
         // State
@@ -591,7 +621,9 @@
             activeHandle: null,
             pdfDoc: null,
             currentPage: 1,
-            totalPages: 1
+            totalPages: 1,
+            pdfRenderScale: 1,              // Current PDF render quality scale
+            lastZoomLevel: 1                // Last zoom level for PDF re-rendering
         };
 
         // Undo/Redo state
@@ -681,7 +713,12 @@
 
                     if (hours < 24 && data.measurements && data.measurements.length > 0) {
                         if (confirm(`📋 Found auto-saved work from ${Math.round(hours)} hour(s) ago with ${data.measurements.length} measurements.\n\nRestore it?`)) {
-                            state.measurements = data.measurements;
+                            // Ensure backward compatibility - add color and category to old measurements
+                            state.measurements = data.measurements.map(m => ({
+                                ...m,
+                                color: m.color || (m.type === 'linear' ? CONSTANTS.COLOR_LINEAR : m.type === 'count' ? CONSTANTS.COLOR_COUNT : CONSTANTS.COLOR_AREA),
+                                category: m.category || ''
+                            }));
                             state.scaleFactor = data.scaleFactor || 1;
                             saveState(); // Add to undo history
                             updateUI();
@@ -853,46 +890,51 @@
             }
         }
         
-        async function renderPDFPage(pageNumber) {
+        async function renderPDFPage(pageNumber, qualityMultiplier = 1) {
             try {
                 if (!state.pdfDoc) return;
-                
+
                 const page = await state.pdfDoc.getPage(pageNumber);
 
-                // Calculate scale to fit canvas nicely
-                const desiredWidth = CONSTANTS.PDF_DESIRED_WIDTH;
+                // Calculate scale to fit canvas nicely, with quality multiplier for zoom
+                const desiredWidth = CONSTANTS.PDF_BASE_WIDTH * qualityMultiplier;
                 const viewport = page.getViewport({ scale: 1 });
                 const scale = desiredWidth / viewport.width;
                 const scaledViewport = page.getViewport({ scale: scale });
-                
+
                 // Create canvas for PDF rendering
                 const pdfCanvas = document.createElement('canvas');
                 const context = pdfCanvas.getContext('2d');
                 pdfCanvas.height = scaledViewport.height;
                 pdfCanvas.width = scaledViewport.width;
-                
+
                 // Render PDF page to canvas
                 const renderContext = {
                     canvasContext: context,
                     viewport: scaledViewport
                 };
-                
+
                 await page.render(renderContext).promise;
-                
+
                 // Convert canvas to image
                 const img = new Image();
                 img.onload = () => {
                     state.image = img;
-                    state.measurements = [];
+                    state.pdfRenderScale = qualityMultiplier;
+                    if (pageNumber !== state.currentPage) {
+                        state.measurements = [];
+                    }
                     state.offset = { x: CONSTANTS.DEFAULT_OFFSET_X, y: CONSTANTS.DEFAULT_OFFSET_Y };
-                    state.scale = 1;
+                    if (pageNumber !== state.currentPage) {
+                        state.scale = 1;
+                    }
                     document.getElementById('emptyState').style.display = 'none';
                     updateUI();
                     draw();
                     enableButtons();
                 };
                 img.src = pdfCanvas.toDataURL();
-                
+
             } catch (error) {
                 console.error('Error rendering PDF page:', error);
                 alert('⚠️ Error Rendering PDF Page\n\n' + error.message + '\n\n' +
@@ -982,7 +1024,14 @@
             for (let i = state.measurements.length - 1; i >= 0; i--) {
                 const m = state.measurements[i];
 
-                if (m.type === 'linear') {
+                if (m.type === 'count') {
+                    // Count measurements - single point
+                    const dx = x - m.x;
+                    const dy = y - m.y;
+                    if (Math.sqrt(dx * dx + dy * dy) <= threshold) {
+                        return { index: i, handle: 'marker' };
+                    }
+                } else if (m.type === 'linear') {
                     // Linear measurements have start and end points
                     const points = [
                         { x: m.x1, y: m.y1, handle: 'start' },
@@ -1112,6 +1161,23 @@
                 state.polygonPoints.push({ x: canvasX, y: canvasY });
                 state.drawing = true;
                 draw();
+            } else if (state.tool === 'count') {
+                // Count measurement - single click to add marker
+                const measurement = {
+                    type: 'count',
+                    x: canvasX,
+                    y: canvasY,
+                    value: 1,
+                    unit: 'ea',
+                    label: '1 ea',
+                    description: '',
+                    color: CONSTANTS.COLOR_COUNT,
+                    category: ''
+                };
+                state.measurements.push(measurement);
+                saveState();
+                updateUI();
+                draw();
             } else {
                 // Linear measurement
                 state.drawing = true;
@@ -1126,7 +1192,11 @@
             if (state.editingHandle && state.activeMeasurement !== null) {
                 const measurement = state.measurements[state.activeMeasurement];
                 if (measurement) {
-                    if (measurement.type === 'linear' || !measurement.points) {
+                    if (measurement.type === 'count') {
+                        // Count marker - move the marker position
+                        measurement.x = canvasX;
+                        measurement.y = canvasY;
+                    } else if (measurement.type === 'linear' || !measurement.points) {
                         // Linear or legacy rectangle
                         if (state.activeHandle === 'start') {
                             measurement.x1 = canvasX;
@@ -1143,7 +1213,9 @@
                             measurement.points[pointIndex].y = canvasY;
                         }
                     }
-                    recalculateMeasurement(measurement);
+                    if (measurement.type !== 'count') {
+                        recalculateMeasurement(measurement);
+                    }
                     draw();
                 }
                 return;
@@ -1180,7 +1252,9 @@
                 value: area,
                 unit: 'sf',
                 label: area.toFixed(2) + ' sf',
-                description: ''
+                description: '',
+                color: CONSTANTS.COLOR_AREA,
+                category: ''
             };
 
             state.measurements.push(measurement);
@@ -1224,7 +1298,7 @@
         function addMeasurement(endX, endY) {
             const dx = endX - state.startPoint.x;
             const dy = endY - state.startPoint.y;
-            
+
             let measurement;
             if (state.tool === 'linear') {
                 const pixels = Math.sqrt(dx * dx + dy * dy);
@@ -1238,7 +1312,9 @@
                     value: length,
                     unit: 'ft',
                     label: length.toFixed(2) + ' ft',
-                    description: ''
+                    description: '',
+                    color: CONSTANTS.COLOR_LINEAR,
+                    category: ''
                 };
             } else {
                 const width = Math.abs(dx) * state.scaleFactor;
@@ -1253,10 +1329,12 @@
                     value: area,
                     unit: 'sf',
                     label: area.toFixed(2) + ' sf',
-                    description: ''
+                    description: '',
+                    color: CONSTANTS.COLOR_AREA,
+                    category: ''
                 };
             }
-            
+
             state.measurements.push(measurement);
             saveState();
             updateUI();
@@ -1276,13 +1354,39 @@
             
             // Draw measurements
             state.measurements.forEach((m, idx) => {
-                const color = m.type === 'linear' ? CONSTANTS.COLOR_LINEAR : CONSTANTS.COLOR_AREA;
+                // Use custom color if set, otherwise use default
+                const color = m.color || (m.type === 'linear' ? CONSTANTS.COLOR_LINEAR : m.type === 'count' ? CONSTANTS.COLOR_COUNT : CONSTANTS.COLOR_AREA);
                 ctx.strokeStyle = color;
                 ctx.fillStyle = color + '40'; // Semi-transparent fill for polygons
                 ctx.lineWidth = CONSTANTS.LINE_WIDTH / state.scale;
 
                 ctx.beginPath();
-                if (m.type === 'linear') {
+                if (m.type === 'count') {
+                    // Count measurement - draw circular marker with number
+                    const markerSize = CONSTANTS.COUNT_MARKER_SIZE / state.scale;
+                    const isActive = state.editMode && idx === state.activeMeasurement;
+
+                    // Draw outer circle
+                    ctx.fillStyle = isActive ? CONSTANTS.COLOR_ACTIVE : color;
+                    ctx.beginPath();
+                    ctx.arc(m.x, m.y, markerSize, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Draw inner circle (white background for number)
+                    ctx.fillStyle = '#000000';
+                    ctx.beginPath();
+                    ctx.arc(m.x, m.y, markerSize * 0.7, 0, Math.PI * 2);
+                    ctx.fill();
+
+                    // Draw count number
+                    ctx.fillStyle = color;
+                    ctx.font = `bold ${CONSTANTS.FONT_SIZE / state.scale}px Arial`;
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(m.value.toString(), m.x, m.y);
+                    ctx.textAlign = 'left';
+                    ctx.textBaseline = 'alphabetic';
+                } else if (m.type === 'linear') {
                     ctx.moveTo(m.x1, m.y1);
                     ctx.lineTo(m.x2, m.y2);
                     ctx.stroke();
@@ -1454,10 +1558,12 @@
             document.getElementById('panBtn').classList.remove('btn-active');
             document.getElementById('linearBtn').classList.remove('btn-active');
             document.getElementById('areaBtn').classList.remove('btn-active');
+            document.getElementById('countBtn').classList.remove('btn-active');
 
             if (tool === 'move') document.getElementById('panBtn').classList.add('btn-active');
             if (tool === 'linear') document.getElementById('linearBtn').classList.add('btn-active');
             if (tool === 'area') document.getElementById('areaBtn').classList.add('btn-active');
+            if (tool === 'count') document.getElementById('countBtn').classList.add('btn-active');
         }
 
         function updateEditModeUI() {
@@ -1508,11 +1614,20 @@
             draw();
         }
         
-        function zoom(factor) {
+        async function zoom(factor) {
             state.scale *= factor;
             state.scale = Math.max(CONSTANTS.MIN_SCALE, Math.min(CONSTANTS.MAX_SCALE, state.scale));
             updateUI();
             draw();
+
+            // Re-render PDF at higher quality if zoomed in significantly
+            if (state.pdfDoc && state.scale > state.lastZoomLevel * 1.5 && state.scale > 1.5) {
+                state.lastZoomLevel = state.scale;
+                const qualityMultiplier = Math.min(CONSTANTS.PDF_QUALITY_MULTIPLIER, Math.ceil(state.scale));
+                if (qualityMultiplier > state.pdfRenderScale) {
+                    await renderPDFPage(state.currentPage, qualityMultiplier);
+                }
+            }
         }
         
         function calibrateScale() {
@@ -1572,12 +1687,14 @@
         function exportCSV() {
             if (state.measurements.length === 0) return;
 
-            const headers = ['Type', 'Value', 'Unit', 'Description'];
+            const headers = ['Type', 'Category', 'Value', 'Unit', 'Description', 'Color'];
             const rows = state.measurements.map(m => [
-                m.type === 'linear' ? 'Linear' : 'Area',
+                m.type === 'linear' ? 'Linear' : m.type === 'count' ? 'Count' : 'Area',
+                m.category || '',
                 m.value.toFixed(2),
                 m.unit,
-                m.description || ''
+                m.description || '',
+                m.color || ''
             ]);
 
             // Properly escape CSV fields (replace " with "")
@@ -1620,7 +1737,45 @@
             state.measurements[idx].description = desc;
             saveState();
         }
-        
+
+        function updateColor(idx, color) {
+            state.measurements[idx].color = color;
+            draw();
+            saveState();
+        }
+
+        function updateCategory(idx, category) {
+            state.measurements[idx].category = category;
+            saveState();
+            updateUI();
+        }
+
+        function renderMeasurementItem(m, i) {
+            const typeIcon = m.type === 'linear' ? '📏' : m.type === 'count' ? '🔢' : '⬛';
+            const typeName = m.type === 'linear' ? 'Length' : m.type === 'count' ? 'Count' : 'Area';
+            const color = m.color || (m.type === 'linear' ? CONSTANTS.COLOR_LINEAR : m.type === 'count' ? CONSTANTS.COLOR_COUNT : CONSTANTS.COLOR_AREA);
+
+            return `
+                <div class="measurement-item">
+                    <div class="measurement-header">
+                        <div style="flex: 1;">
+                            <div class="measurement-label">${m.label}</div>
+                            <div class="measurement-type">${typeIcon} ${typeName} • #${i + 1}</div>
+                        </div>
+                        <button class="delete-btn" data-index="${i}">🗑️</button>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;">
+                        <label style="font-size: 0.75rem; color: var(--text-secondary);">Color:</label>
+                        <input type="color" class="color-input" value="${color}" data-index="${i}"
+                               style="width: 40px; height: 30px; border: 1px solid #555; border-radius: 4px; background: #444; cursor: pointer;">
+                        <input type="text" class="category-input" placeholder="Category..." value="${m.category || ''}" data-index="${i}"
+                               style="flex: 1; padding: 0.375rem; background: var(--input-bg); border: 1px solid var(--input-border); border-radius: 4px; color: white; font-size: 0.75rem;">
+                    </div>
+                    <input type="text" class="description-input" placeholder="Description..." value="${m.description || ''}" data-index="${i}">
+                </div>
+            `;
+        }
+
         function updateUI() {
             document.getElementById('zoomLevel').textContent = (state.scale * 100).toFixed(0);
             document.getElementById('scaleValue').textContent = state.scaleFactor.toFixed(4);
@@ -1631,21 +1786,56 @@
             if (state.measurements.length === 0) {
                 list.innerHTML = '<div class="empty-measurements">No measurements yet<br><span style="font-size: 0.75rem;">Select a tool and draw on canvas</span></div>';
             } else {
+                // Group measurements by category
+                const categories = {};
+                const uncategorized = [];
+
+                state.measurements.forEach((m, i) => {
+                    const category = (m.category || '').trim();
+                    if (category) {
+                        if (!categories[category]) {
+                            categories[category] = [];
+                        }
+                        categories[category].push({ measurement: m, index: i });
+                    } else {
+                        uncategorized.push({ measurement: m, index: i });
+                    }
+                });
+
+                // Calculate totals
                 const totalLinear = state.measurements.filter(m => m.type === 'linear').reduce((sum, m) => sum + m.value, 0);
                 const totalArea = state.measurements.filter(m => m.type === 'area').reduce((sum, m) => sum + m.value, 0);
-                
-                list.innerHTML = state.measurements.map((m, i) => `
-                    <div class="measurement-item">
-                        <div class="measurement-header">
-                            <div>
-                                <div class="measurement-label">${m.label}</div>
-                                <div class="measurement-type">${m.type === 'linear' ? '📏 Length' : '⬛ Area'} • #${i + 1}</div>
-                            </div>
-                            <button class="delete-btn" data-index="${i}">🗑️</button>
+                const totalCount = state.measurements.filter(m => m.type === 'count').reduce((sum, m) => sum + m.value, 0);
+
+                let html = '';
+
+                // Render grouped measurements
+                Object.keys(categories).sort().forEach(category => {
+                    const items = categories[category];
+                    const catLinear = items.filter(i => i.measurement.type === 'linear').reduce((sum, i) => sum + i.measurement.value, 0);
+                    const catArea = items.filter(i => i.measurement.type === 'area').reduce((sum, i) => sum + i.measurement.value, 0);
+                    const catCount = items.filter(i => i.measurement.type === 'count').reduce((sum, i) => sum + i.measurement.value, 0);
+
+                    html += `<div style="margin-bottom: 1rem;">
+                        <div style="background: #444; padding: 0.5rem; border-radius: 4px; margin-bottom: 0.5rem; font-weight: bold;">
+                            📁 ${category}
+                            <span style="float: right; font-size: 0.75rem; font-weight: normal;">
+                                ${catLinear > 0 ? catLinear.toFixed(2) + ' ft' : ''}
+                                ${catArea > 0 ? (catLinear > 0 ? ' • ' : '') + catArea.toFixed(2) + ' sf' : ''}
+                                ${catCount > 0 ? (catLinear > 0 || catArea > 0 ? ' • ' : '') + catCount + ' ea' : ''}
+                            </span>
                         </div>
-                        <input type="text" class="description-input" placeholder="Description..." value="${m.description}" data-index="${i}">
-                    </div>
-                `).join('') + `
+                        ${items.map(({ measurement: m, index: i }) => renderMeasurementItem(m, i)).join('')}
+                    </div>`;
+                });
+
+                // Render uncategorized measurements
+                if (uncategorized.length > 0) {
+                    html += uncategorized.map(({ measurement: m, index: i }) => renderMeasurementItem(m, i)).join('');
+                }
+
+                // Summary
+                html += `
                     <div class="summary">
                         <h3>📊 Summary</h3>
                         <div class="summary-row">
@@ -1656,12 +1846,18 @@
                             <span>Total Area:</span>
                             <span class="summary-value">${totalArea.toFixed(2)} sf</span>
                         </div>
+                        <div class="summary-row">
+                            <span>Total Count:</span>
+                            <span class="summary-value">${totalCount} ea</span>
+                        </div>
                         <div class="summary-row" style="border-top: 1px solid #444; padding-top: 0.25rem; margin-top: 0.25rem;">
                             <span>Items:</span>
                             <span class="summary-value">${state.measurements.length}</span>
                         </div>
                     </div>
                 `;
+
+                list.innerHTML = html;
             }
             
             document.getElementById('calibrateBtn').disabled = state.measurements.length === 0;
@@ -1683,12 +1879,27 @@
                 });
             });
 
+            document.querySelectorAll('.color-input').forEach(input => {
+                input.addEventListener('input', (e) => {
+                    const index = parseInt(e.target.getAttribute('data-index'));
+                    updateColor(index, e.target.value);
+                });
+            });
+
+            document.querySelectorAll('.category-input').forEach(input => {
+                input.addEventListener('change', (e) => {
+                    const index = parseInt(e.target.getAttribute('data-index'));
+                    updateCategory(index, e.target.value);
+                });
+            });
+
             updateEditModeUI();
         }
         
         function enableButtons() {
             document.getElementById('linearBtn').disabled = false;
             document.getElementById('areaBtn').disabled = false;
+            document.getElementById('countBtn').disabled = false;
             document.getElementById('zoomInBtn').disabled = false;
             document.getElementById('zoomOutBtn').disabled = false;
             document.getElementById('fitBtn').disabled = false;
@@ -1753,6 +1964,11 @@
                         setTool('area');
                     }
                     break;
+                case 'q':
+                    if (!document.getElementById('countBtn').disabled) {
+                        setTool('count');
+                    }
+                    break;
                 case 'e':
                     if (!document.getElementById('editBtn').disabled) {
                         toggleEditMode();
@@ -1799,6 +2015,10 @@
 
         document.getElementById('areaBtn').addEventListener('click', () => {
             setTool('area');
+        });
+
+        document.getElementById('countBtn').addEventListener('click', () => {
+            setTool('count');
         });
 
         document.getElementById('calibrateBtn').addEventListener('click', calibrateScale);
