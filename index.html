@@ -560,7 +560,7 @@
                         <ul style="margin-left: 1rem; list-style: none;">
                             <li>• <kbd>M</kbd> Pan  <kbd>L</kbd> Linear  <kbd>A</kbd> Area  <kbd>Q</kbd> Count</li>
                             <li>• <kbd>Ctrl+Z</kbd> Undo  <kbd>Ctrl+Y</kbd> Redo</li>
-                            <li>• <kbd>E</kbd> Edit  <kbd>+/-</kbd> Zoom</li>
+                            <li>• <kbd>E</kbd> Edit  <kbd>+/-</kbd> or 🖱️ Wheel to Zoom</li>
                         </ul>
                     </div>
                     
@@ -591,8 +591,8 @@
             ZOOM_OUT_FACTOR: 0.77,          // Zoom out multiplier
             MIN_SCALE: 0.2,                 // Minimum zoom level
             MAX_SCALE: 5,                   // Maximum zoom level
-            PDF_BASE_WIDTH: 1000,           // Base width for PDF rendering
-            PDF_QUALITY_MULTIPLIER: 2,      // Quality multiplier for zoomed PDFs
+            PDF_BASE_WIDTH: 2400,           // Base width for PDF rendering (high quality)
+            PDF_QUALITY_MULTIPLIER: 3,      // Quality multiplier for zoomed PDFs
             DEFAULT_OFFSET_X: 50,           // Default canvas X offset
             DEFAULT_OFFSET_Y: 50,           // Default canvas Y offset
             COLOR_LINEAR: '#00ff00',        // Color for linear measurements
@@ -867,8 +867,9 @@
                 state.currentPage = 1;
                 
                 loadingText.textContent = `Rendering page 1 of ${pdf.numPages}...`;
-                
-                await renderPDFPage(1);
+
+                // Render at base quality initially
+                await renderPDFPage(1, 1);
                 
                 // Show PDF controls if multiple pages
                 if (pdf.numPages > 1) {
@@ -955,10 +956,11 @@
             const loadingText = document.getElementById('loadingText');
             loadingOverlay.classList.add('show');
             loadingText.textContent = `Loading page ${newPage} of ${state.totalPages}...`;
-            
-            await renderPDFPage(newPage);
+
+            // Render at base quality when changing pages
+            await renderPDFPage(newPage, 1);
             updatePageInfo();
-            
+
             loadingOverlay.classList.remove('show');
         }
         
@@ -981,7 +983,8 @@
             loadingOverlay.classList.add('show');
             loadingText.textContent = `Loading page ${page} of ${state.totalPages}...`;
 
-            await renderPDFPage(page);
+            // Render at base quality when changing pages
+            await renderPDFPage(page, 1);
             updatePageInfo();
 
             loadingOverlay.classList.remove('show');
@@ -1620,12 +1623,22 @@
             updateUI();
             draw();
 
-            // Re-render PDF at higher quality if zoomed in significantly
-            if (state.pdfDoc && state.scale > state.lastZoomLevel * 1.5 && state.scale > 1.5) {
-                state.lastZoomLevel = state.scale;
-                const qualityMultiplier = Math.min(CONSTANTS.PDF_QUALITY_MULTIPLIER, Math.ceil(state.scale));
-                if (qualityMultiplier > state.pdfRenderScale) {
-                    await renderPDFPage(state.currentPage, qualityMultiplier);
+            // Re-render PDF at higher quality when zooming in significantly
+            if (state.pdfDoc) {
+                // Determine quality multiplier based on zoom level
+                let targetQuality = 1;
+                if (state.scale > 2.5) {
+                    targetQuality = CONSTANTS.PDF_QUALITY_MULTIPLIER;
+                } else if (state.scale > 1.5) {
+                    targetQuality = 2;
+                } else if (state.scale > 0.8) {
+                    targetQuality = 1;
+                }
+
+                // Re-render if we need higher quality
+                if (targetQuality > state.pdfRenderScale) {
+                    state.lastZoomLevel = state.scale;
+                    await renderPDFPage(state.currentPage, targetQuality);
                 }
             }
         }
@@ -1905,6 +1918,22 @@
             document.getElementById('fitBtn').disabled = false;
         }
 
+        // Mouse wheel zoom
+        canvas.addEventListener('wheel', (e) => {
+            if (!state.image) return;
+
+            e.preventDefault();
+            const delta = e.deltaY;
+
+            if (delta < 0) {
+                // Zoom in
+                zoom(CONSTANTS.ZOOM_IN_FACTOR);
+            } else {
+                // Zoom out
+                zoom(CONSTANTS.ZOOM_OUT_FACTOR);
+            }
+        }, { passive: false });
+
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
             // Ctrl+Z (Undo) and Ctrl+Y (Redo) work even in input fields
@@ -1919,13 +1948,18 @@
                 return;
             }
 
-            // Don't trigger other shortcuts when typing in input fields
-            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+            // Don't trigger other shortcuts when typing in input fields (except select dropdowns)
+            if ((e.target.tagName === 'INPUT' && e.target.type !== 'file' && e.target.type !== 'color') ||
+                e.target.tagName === 'TEXTAREA' ||
+                e.target.tagName === 'SELECT') {
                 return;
             }
 
-            switch(e.key.toLowerCase()) {
+            const key = e.key.toLowerCase();
+
+            switch(key) {
                 case 'escape':
+                    e.preventDefault();
                     if (state.polygonPoints.length > 0) {
                         // Cancel polygon in progress
                         state.polygonPoints = [];
@@ -1952,24 +1986,29 @@
                     }
                     break;
                 case 'm':
+                    e.preventDefault();
                     setTool('move');
                     break;
                 case 'l':
+                    e.preventDefault();
                     if (!document.getElementById('linearBtn').disabled) {
                         setTool('linear');
                     }
                     break;
                 case 'a':
+                    e.preventDefault();
                     if (!document.getElementById('areaBtn').disabled) {
                         setTool('area');
                     }
                     break;
                 case 'q':
+                    e.preventDefault();
                     if (!document.getElementById('countBtn').disabled) {
                         setTool('count');
                     }
                     break;
                 case 'e':
+                    e.preventDefault();
                     if (!document.getElementById('editBtn').disabled) {
                         toggleEditMode();
                     }
@@ -1981,18 +2020,21 @@
                     }
                     break;
                 case 'c':
+                    e.preventDefault();
                     if (!document.getElementById('clearBtn').disabled) {
                         clearAll();
                     }
                     break;
                 case '+':
                 case '=':
+                    e.preventDefault();
                     if (!document.getElementById('zoomInBtn').disabled) {
                         zoom(CONSTANTS.ZOOM_IN_FACTOR);
                     }
                     break;
                 case '-':
                 case '_':
+                    e.preventDefault();
                     if (!document.getElementById('zoomOutBtn').disabled) {
                         zoom(CONSTANTS.ZOOM_OUT_FACTOR);
                     }
