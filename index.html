@@ -623,7 +623,9 @@
             currentPage: 1,
             totalPages: 1,
             pdfRenderScale: 1,              // Current PDF render quality scale
-            lastZoomLevel: 1                // Last zoom level for PDF re-rendering
+            lastZoomLevel: 1,               // Last zoom level for PDF re-rendering
+            imageWidth: 0,                  // Current image width for scaling measurements
+            imageHeight: 0                  // Current image height for scaling measurements
         };
 
         // Undo/Redo state
@@ -827,7 +829,7 @@
         document.getElementById('fileInput').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (!file) return;
-            
+
             if (file.type === 'application/pdf') {
                 await loadPDF(file);
             } else {
@@ -836,6 +838,8 @@
                     const img = new Image();
                     img.onload = () => {
                         state.image = img;
+                        state.imageWidth = img.width;
+                        state.imageHeight = img.height;
                         state.measurements = [];
                         state.offset = { x: CONSTANTS.DEFAULT_OFFSET_X, y: CONSTANTS.DEFAULT_OFFSET_Y };
                         state.scale = 1;
@@ -895,6 +899,10 @@
             try {
                 if (!state.pdfDoc) return;
 
+                // Store old dimensions before rendering
+                const oldWidth = state.imageWidth;
+                const oldHeight = state.imageHeight;
+
                 const page = await state.pdfDoc.getPage(pageNumber);
 
                 // Calculate scale to fit canvas nicely, with quality multiplier for zoom
@@ -920,8 +928,19 @@
                 // Convert canvas to image
                 const img = new Image();
                 img.onload = () => {
+                    const newWidth = img.width;
+                    const newHeight = img.height;
+
+                    // Scale existing measurements if image size changed
+                    if (pageNumber === state.currentPage && state.measurements.length > 0) {
+                        scaleMeasurements(oldWidth, oldHeight, newWidth, newHeight);
+                    }
+
                     state.image = img;
+                    state.imageWidth = newWidth;
+                    state.imageHeight = newHeight;
                     state.pdfRenderScale = qualityMultiplier;
+
                     if (pageNumber !== state.currentPage) {
                         state.measurements = [];
                     }
@@ -1088,6 +1107,58 @@
                 area -= points[j].x * points[i].y;
             }
             return Math.abs(area / 2);
+        }
+
+        // Scale measurements when image size changes (e.g., PDF quality re-render)
+        function scaleMeasurements(oldWidth, oldHeight, newWidth, newHeight) {
+            if (oldWidth === 0 || oldHeight === 0) return;
+            if (oldWidth === newWidth && oldHeight === newHeight) return;
+
+            const scaleX = newWidth / oldWidth;
+            const scaleY = newHeight / oldHeight;
+
+            state.measurements.forEach(m => {
+                if (m.type === 'count') {
+                    // Scale count marker position
+                    m.x *= scaleX;
+                    m.y *= scaleY;
+                } else if (m.type === 'linear') {
+                    // Scale linear endpoints
+                    m.x1 *= scaleX;
+                    m.y1 *= scaleY;
+                    m.x2 *= scaleX;
+                    m.y2 *= scaleY;
+                } else if (m.points) {
+                    // Scale polygon points
+                    m.points.forEach(p => {
+                        p.x *= scaleX;
+                        p.y *= scaleY;
+                    });
+                } else {
+                    // Legacy rectangle format
+                    m.x1 *= scaleX;
+                    m.y1 *= scaleY;
+                    m.x2 *= scaleX;
+                    m.y2 *= scaleY;
+                }
+
+                // Recalculate measurement values (don't scale count)
+                if (m.type !== 'count') {
+                    recalculateMeasurement(m);
+                }
+            });
+
+            // Scale polygon in progress
+            state.polygonPoints.forEach(p => {
+                p.x *= scaleX;
+                p.y *= scaleY;
+            });
+
+            // Scale start point if drawing
+            if (state.startPoint) {
+                state.startPoint.x *= scaleX;
+                state.startPoint.y *= scaleY;
+            }
         }
 
         function recalculateMeasurement(measurement) {
