@@ -442,6 +442,7 @@
             </h1>
             <div class="toolbar" role="toolbar" aria-label="Main toolbar">
                 <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.pdf" aria-label="Upload construction drawing file">
+                <input type="file" id="projectFileInput" accept=".takeoff" aria-label="Load project file" style="display: none;">
 
                 <div class="quick-actions">
                     <button class="btn-primary" id="uploadBtn" aria-label="Upload construction drawing">
@@ -496,6 +497,15 @@
                     <button class="btn-danger" id="clearBtn" disabled aria-label="Clear all (C)" title="Clear All (C)">
                         🗑️
                     </button>
+
+                    <div class="tool-group">
+                        <button class="btn-primary" id="saveProjectBtn" disabled aria-label="Save project (Ctrl+S)" title="Save Project (Ctrl+S)">
+                            💾 Save
+                        </button>
+                        <button class="btn-primary" id="loadProjectBtn" aria-label="Load project (Ctrl+O)" title="Load Project (Ctrl+O)">
+                            📂 Load
+                        </button>
+                    </div>
                 </div>
             </div>
             <div class="edit-mode-indicator" id="editIndicator">
@@ -559,6 +569,7 @@
                         <h3 style="margin-top: 0.75rem;">⌨️ Shortcuts:</h3>
                         <ul style="margin-left: 1rem; list-style: none;">
                             <li>• <kbd>M</kbd> Pan  <kbd>L</kbd> Linear  <kbd>A</kbd> Area  <kbd>Q</kbd> Count</li>
+                            <li>• <kbd>Ctrl+S</kbd> Save  <kbd>Ctrl+O</kbd> Load Project</li>
                             <li>• <kbd>Ctrl+Z</kbd> Undo  <kbd>Ctrl+Y</kbd> Redo</li>
                             <li>• <kbd>E</kbd> Edit  <kbd>+/-</kbd> or 🖱️ Wheel to Zoom</li>
                         </ul>
@@ -625,7 +636,10 @@
             pdfRenderScale: 1,              // Current PDF render quality scale
             lastZoomLevel: 1,               // Last zoom level for PDF re-rendering
             imageWidth: 0,                  // Current image width for scaling measurements
-            imageHeight: 0                  // Current image height for scaling measurements
+            imageHeight: 0,                 // Current image height for scaling measurements
+            projectName: '',                // Project name
+            hasUnsavedChanges: false,       // Track unsaved changes
+            lastSavedState: null            // Last saved state for comparison
         };
 
         // Undo/Redo state
@@ -659,6 +673,9 @@
                 history.currentIndex++;
             }
 
+            // Mark as having unsaved changes
+            state.hasUnsavedChanges = true;
+            updateTitle();
             updateUndoRedoButtons();
             autoSave();
         }
@@ -771,23 +788,25 @@
             const input = document.getElementById('scaleInput').value.trim();
             if (!input) return;
 
-            const value = parseFloat(input);
-            if (!isNaN(value) && value > 0) {
-                state.scaleFactor = value;
-
-                // Recalculate all measurements
-                state.measurements.forEach(m => {
-                    recalculateMeasurement(m);
-                });
-
-                saveState();
-                updateUI();
-                draw();
-
-                document.getElementById('scalePreset').value = 'custom';
-            } else {
-                alert('⚠️ Invalid Scale\n\nPlease enter a positive number (e.g., 0.0208 for 1/4" = 1\')');
+            const validation = validateScaleFactor(input);
+            if (!validation.valid) {
+                alert('⚠️ Invalid Scale\n\n' + validation.error + '\n\nPlease enter a valid positive number (e.g., 0.0208 for 1/4" = 1\')');
+                return;
             }
+
+            state.scaleFactor = validation.value;
+
+            // Recalculate all measurements
+            state.measurements.forEach(m => {
+                recalculateMeasurement(m);
+            });
+
+            saveState();
+            updateUI();
+            draw();
+
+            document.getElementById('scalePreset').value = 'custom';
+            showToast('✅ Scale updated successfully', 'success');
         }
 
         // Fit to screen
@@ -1797,6 +1816,254 @@
             a.click();
             URL.revokeObjectURL(url);
         }
+
+        // ==================== PHASE 1: FOUNDATION FEATURES ====================
+
+        // Update browser title with project name and unsaved indicator
+        function updateTitle() {
+            const baseName = state.projectName || 'Construction Plan Takeoff Tool';
+            const unsavedMarker = state.hasUnsavedChanges ? ' *' : '';
+            document.title = baseName + unsavedMarker;
+        }
+
+        // Input Validation Functions
+        function validateScaleFactor(value) {
+            const num = parseFloat(value);
+            if (isNaN(num)) {
+                return { valid: false, error: 'Scale must be a valid number' };
+            }
+            if (num <= 0) {
+                return { valid: false, error: 'Scale must be greater than 0' };
+            }
+            if (num > 1000) {
+                return { valid: false, error: 'Scale value is unreasonably large (max: 1000)' };
+            }
+            return { valid: true, value: num };
+        }
+
+        function validateCategory(value) {
+            if (!value || value.trim() === '') {
+                return { valid: true, value: '' }; // Empty is OK
+            }
+            const trimmed = value.trim();
+            if (trimmed.length > 50) {
+                return { valid: false, error: 'Category name too long (max: 50 characters)' };
+            }
+            // Allow alphanumeric, spaces, hyphens, underscores
+            if (!/^[a-zA-Z0-9\s\-_]+$/.test(trimmed)) {
+                return { valid: false, error: 'Category can only contain letters, numbers, spaces, hyphens, and underscores' };
+            }
+            return { valid: true, value: trimmed };
+        }
+
+        function validateDescription(value) {
+            if (!value || value.trim() === '') {
+                return { valid: true, value: '' };
+            }
+            const trimmed = value.trim();
+            if (trimmed.length > 200) {
+                return { valid: false, error: 'Description too long (max: 200 characters)' };
+            }
+            return { valid: true, value: trimmed };
+        }
+
+        function validateProjectName(value) {
+            if (!value || value.trim() === '') {
+                return { valid: false, error: 'Project name cannot be empty' };
+            }
+            const trimmed = value.trim();
+            if (trimmed.length > 100) {
+                return { valid: false, error: 'Project name too long (max: 100 characters)' };
+            }
+            // Prevent invalid filename characters
+            if (/[<>:"/\\|?*]/.test(trimmed)) {
+                return { valid: false, error: 'Project name contains invalid characters' };
+            }
+            return { valid: true, value: trimmed };
+        }
+
+        // Project Save/Load Functions
+        function saveProject() {
+            // Prompt for project name if not set
+            if (!state.projectName) {
+                const name = prompt('Enter project name:', 'My Takeoff Project');
+                if (!name) return;
+
+                const validation = validateProjectName(name);
+                if (!validation.valid) {
+                    alert('⚠️ Invalid Project Name\n\n' + validation.error);
+                    return;
+                }
+                state.projectName = validation.value;
+            }
+
+            try {
+                const projectData = {
+                    version: '1.0',
+                    projectName: state.projectName,
+                    timestamp: Date.now(),
+                    date: new Date().toISOString(),
+                    scaleFactor: state.scaleFactor,
+                    measurements: state.measurements,
+                    currentPage: state.currentPage,
+                    totalPages: state.totalPages,
+                    // Note: We don't save the actual image/PDF, just the measurements
+                    metadata: {
+                        measurementCount: state.measurements.length,
+                        categories: [...new Set(state.measurements.map(m => m.category).filter(c => c))],
+                        totalLinear: state.measurements.filter(m => m.type === 'linear').reduce((sum, m) => sum + m.value, 0),
+                        totalArea: state.measurements.filter(m => m.type === 'area').reduce((sum, m) => sum + m.value, 0),
+                        totalCount: state.measurements.filter(m => m.type === 'count').reduce((sum, m) => sum + m.value, 0)
+                    }
+                };
+
+                const json = JSON.stringify(projectData, null, 2);
+                const blob = new Blob([json], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${state.projectName}.takeoff`;
+                a.click();
+                URL.revokeObjectURL(url);
+
+                // Mark as saved
+                state.hasUnsavedChanges = false;
+                state.lastSavedState = JSON.stringify(state.measurements);
+                updateTitle();
+
+                showToast('✅ Project saved successfully!', 'success');
+            } catch (error) {
+                console.error('Save project error:', error);
+                alert('⚠️ Error Saving Project\n\n' + error.message + '\n\nPlease try again.');
+            }
+        }
+
+        function loadProject() {
+            // Warn about unsaved changes
+            if (state.hasUnsavedChanges && state.measurements.length > 0) {
+                if (!confirm('⚠️ You have unsaved changes!\n\nLoading a project will discard current work.\n\nContinue?')) {
+                    return;
+                }
+            }
+
+            document.getElementById('projectFileInput').click();
+        }
+
+        function handleProjectFileLoad(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const projectData = JSON.parse(event.target.result);
+
+                    // Validate project data
+                    if (!projectData.version || !projectData.measurements) {
+                        throw new Error('Invalid project file format');
+                    }
+
+                    // Backward compatibility check
+                    if (projectData.version !== '1.0') {
+                        if (!confirm('⚠️ Different Project Version\n\nThis project was created with a different version.\n\nLoading may cause issues. Continue?')) {
+                            return;
+                        }
+                    }
+
+                    // Load project data
+                    state.projectName = projectData.projectName || 'Loaded Project';
+                    state.scaleFactor = projectData.scaleFactor || 1;
+
+                    // Ensure all measurements have required fields
+                    state.measurements = projectData.measurements.map(m => ({
+                        ...m,
+                        color: m.color || (m.type === 'linear' ? CONSTANTS.COLOR_LINEAR : m.type === 'count' ? CONSTANTS.COLOR_COUNT : CONSTANTS.COLOR_AREA),
+                        category: m.category || '',
+                        description: m.description || ''
+                    }));
+
+                    // Clear history and save new state
+                    history.states = [];
+                    history.currentIndex = -1;
+                    saveState();
+
+                    // Mark as saved
+                    state.hasUnsavedChanges = false;
+                    state.lastSavedState = JSON.stringify(state.measurements);
+
+                    updateTitle();
+                    updateUI();
+                    draw();
+
+                    const meta = projectData.metadata || {};
+                    showToast(`✅ Loaded "${state.projectName}"\n${meta.measurementCount || state.measurements.length} measurements`, 'success');
+
+                    // Warn user to load the original PDF/image
+                    if (!state.image) {
+                        alert('📄 Load Drawing File\n\nProject loaded successfully!\n\nPlease upload the original construction drawing (PDF/Image) to view the measurements.');
+                    }
+                } catch (error) {
+                    console.error('Load project error:', error);
+                    alert('⚠️ Error Loading Project\n\n' + error.message + '\n\nThe project file may be corrupted or incompatible.');
+                }
+            };
+            reader.readAsText(file);
+
+            // Reset file input so same file can be loaded again
+            e.target.value = '';
+        }
+
+        // Toast Notification System
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.style.cssText = `
+                position: fixed;
+                top: 80px;
+                right: 20px;
+                padding: 1rem 1.5rem;
+                background: ${type === 'success' ? '#10b981' : type === 'error' ? '#ef4444' : '#3b82f6'};
+                color: white;
+                border-radius: 4px;
+                box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+                z-index: 10000;
+                font-size: 0.875rem;
+                max-width: 300px;
+                animation: slideIn 0.3s ease-out;
+                white-space: pre-line;
+            `;
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
+            setTimeout(() => {
+                toast.style.animation = 'slideOut 0.3s ease-in';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Add CSS animations for toast
+        const styleSheet = document.createElement('style');
+        styleSheet.textContent = `
+            @keyframes slideIn {
+                from { transform: translateX(400px); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+            @keyframes slideOut {
+                from { transform: translateX(0); opacity: 1; }
+                to { transform: translateX(400px); opacity: 0; }
+            }
+        `;
+        document.head.appendChild(styleSheet);
+
+        // Prevent data loss on page close
+        window.addEventListener('beforeunload', (e) => {
+            if (state.hasUnsavedChanges && state.measurements.length > 0) {
+                e.preventDefault();
+                e.returnValue = ''; // Required for Chrome
+                return ''; // Required for other browsers
+            }
+        });
+
+        // ==================== END PHASE 1 FEATURES ====================
         
         function clearAll() {
             const count = state.measurements.length;
@@ -1818,7 +2085,14 @@
         }
         
         function updateDescription(idx, desc) {
-            state.measurements[idx].description = desc;
+            const validation = validateDescription(desc);
+            if (!validation.valid) {
+                showToast('⚠️ ' + validation.error, 'error');
+                // Reset to previous value
+                updateUI();
+                return;
+            }
+            state.measurements[idx].description = validation.value;
             saveState();
         }
 
@@ -1829,7 +2103,14 @@
         }
 
         function updateCategory(idx, category) {
-            state.measurements[idx].category = category;
+            const validation = validateCategory(category);
+            if (!validation.valid) {
+                showToast('⚠️ ' + validation.error, 'error');
+                // Reset to previous value
+                updateUI();
+                return;
+            }
+            state.measurements[idx].category = validation.value;
             saveState();
             updateUI();
         }
@@ -1947,6 +2228,7 @@
             document.getElementById('calibrateBtn').disabled = state.measurements.length === 0;
             document.getElementById('exportBtn').disabled = state.measurements.length === 0;
             document.getElementById('clearBtn').disabled = state.measurements.length === 0;
+            document.getElementById('saveProjectBtn').disabled = state.measurements.length === 0;
 
             // Add event listeners to dynamically created elements
             document.querySelectorAll('.delete-btn').forEach(btn => {
@@ -2007,6 +2289,22 @@
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
+            // Ctrl+S (Save) - works everywhere
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+                e.preventDefault();
+                if (!document.getElementById('saveProjectBtn').disabled) {
+                    saveProject();
+                }
+                return;
+            }
+
+            // Ctrl+O (Open/Load) - works everywhere
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o') {
+                e.preventDefault();
+                loadProject();
+                return;
+            }
+
             // Ctrl+Z (Undo) and Ctrl+Y (Redo) work even in input fields
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
                 e.preventDefault();
@@ -2085,8 +2383,9 @@
                     }
                     break;
                 case 's':
-                    if (!document.getElementById('calibrateBtn').disabled) {
-                        e.preventDefault(); // Prevent browser save dialog
+                    // Only trigger calibrate if Ctrl is not pressed (Ctrl+S is handled above)
+                    if (!e.ctrlKey && !e.metaKey && !document.getElementById('calibrateBtn').disabled) {
+                        e.preventDefault();
                         calibrateScale();
                     }
                     break;
@@ -2149,6 +2448,11 @@
         document.getElementById('exportBtn').addEventListener('click', exportCSV);
 
         document.getElementById('clearBtn').addEventListener('click', clearAll);
+
+        // Phase 1: Project save/load
+        document.getElementById('saveProjectBtn').addEventListener('click', saveProject);
+        document.getElementById('loadProjectBtn').addEventListener('click', loadProject);
+        document.getElementById('projectFileInput').addEventListener('change', handleProjectFileLoad);
 
         document.getElementById('pdfPrevBtn').addEventListener('click', () => {
             changePDFPage(-1);
