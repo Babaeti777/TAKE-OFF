@@ -31,6 +31,21 @@
             --btn-edit-hover: #7c3aed;
         }
 
+        /* Phase 3: Light Theme */
+        [data-theme="light"] {
+            --bg-primary: #f5f5f5;
+            --bg-secondary: #ffffff;
+            --bg-tertiary: #e5e5e5;
+            --border-color: #d4d4d4;
+            --text-primary: #171717;
+            --text-secondary: #525252;
+            --text-tertiary: #737373;
+            --text-muted: #a3a3a3;
+            --text-bright: #404040;
+            --input-bg: #ffffff;
+            --input-border: #d4d4d4;
+        }
+
         * {
             margin: 0;
             padding: 0;
@@ -413,6 +428,133 @@
             border: none;
             border-radius: 3px;
         }
+
+        /* ==================== PHASE 2 & 3: UI ENHANCEMENTS ==================== */
+
+        /* Phase 2: Multi-selection */
+        .measurement-item.selected {
+            outline: 2px solid var(--btn-primary);
+            outline-offset: -2px;
+            background: var(--btn-primary)15 !important;
+        }
+
+        .measurement-item:hover {
+            background: var(--bg-tertiary);
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .selection-box {
+            position: absolute;
+            border: 2px dashed var(--btn-primary);
+            background: var(--btn-primary)20;
+            pointer-events: none;
+            z-index: 1000;
+        }
+
+        /* Phase 3: Sidebar toggle */
+        .sidebar.collapsed {
+            width: 0;
+            min-width: 0;
+            overflow: hidden;
+        }
+
+        .sidebar-toggle {
+            position: absolute;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-right: none;
+            padding: 1rem 0.5rem;
+            cursor: pointer;
+            z-index: 100;
+            border-radius: 4px 0 0 4px;
+            transition: all 0.3s;
+        }
+
+        .sidebar-toggle:hover {
+            background: var(--bg-tertiary);
+        }
+
+        /* Phase 3: Bulk actions bar */
+        .bulk-actions {
+            position: sticky;
+            top: 0;
+            background: var(--btn-primary);
+            color: white;
+            padding: 0.75rem 1rem;
+            display: none;
+            align-items: center;
+            gap: 0.5rem;
+            z-index: 50;
+            border-radius: 4px;
+            margin-bottom: 0.5rem;
+        }
+
+        .bulk-actions.show {
+            display: flex;
+        }
+
+        .bulk-actions button {
+            padding: 0.375rem 0.75rem;
+            font-size: 0.75rem;
+        }
+
+        /* Phase 3: Theme toggle */
+        .theme-toggle {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            padding: 0.25rem;
+            border-radius: 4px;
+            display: flex;
+            gap: 0.25rem;
+        }
+
+        .theme-toggle button {
+            padding: 0.375rem 0.75rem;
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-radius: 3px;
+            transition: all 0.2s;
+        }
+
+        .theme-toggle button.active {
+            background: var(--btn-primary);
+            color: white;
+        }
+
+        /* Phase 3: Enhanced tooltips */
+        [data-tooltip] {
+            position: relative;
+        }
+
+        [data-tooltip]:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 0.375rem 0.75rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            white-space: nowrap;
+            z-index: 10000;
+            margin-bottom: 0.5rem;
+            pointer-events: none;
+        }
+
+        /* Phase 3: Smooth transitions */
+        .sidebar, .canvas-area {
+            transition: width 0.3s ease, min-width 0.3s ease;
+        }
+
+        /* ==================== END PHASE 2 & 3 STYLES ==================== */
     </style>
 </head>
 <body>
@@ -506,6 +648,11 @@
                             📂 Load
                         </button>
                     </div>
+
+                    <div class="theme-toggle" role="radiogroup" aria-label="Theme selection">
+                        <button id="darkThemeBtn" class="active" aria-label="Dark theme" aria-checked="true">🌙 Dark</button>
+                        <button id="lightThemeBtn" aria-label="Light theme" aria-checked="false">☀️ Light</button>
+                    </div>
                 </div>
             </div>
             <div class="edit-mode-indicator" id="editIndicator">
@@ -548,10 +695,22 @@
             </div>
             
             <div class="sidebar">
+                <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle sidebar" title="Toggle Sidebar">
+                    ◀
+                </button>
                 <div class="sidebar-header">
                     <h2>Measurements</h2>
                 </div>
                 <div class="sidebar-content">
+                    <!-- Phase 2: Bulk Actions Bar -->
+                    <div class="bulk-actions" id="bulkActions">
+                        <span id="bulkCount">0 selected</span>
+                        <button class="btn-danger" id="bulkDeleteBtn">🗑️ Delete</button>
+                        <button class="btn-secondary" id="bulkColorBtn">🎨 Color</button>
+                        <button class="btn-secondary" id="bulkCategoryBtn">📁 Category</button>
+                        <button class="btn-secondary" id="bulkDeselectBtn">✖ Clear</button>
+                    </div>
+
                     <div class="instructions">
                         <h3>🚀 Quick Start:</h3>
                         <ol>
@@ -639,7 +798,11 @@
             imageHeight: 0,                 // Current image height for scaling measurements
             projectName: '',                // Project name
             hasUnsavedChanges: false,       // Track unsaved changes
-            lastSavedState: null            // Last saved state for comparison
+            lastSavedState: null,           // Last saved state for comparison
+            selectedMeasurements: new Set(), // Phase 2: Multi-selection
+            selectionBox: null,             // Phase 2: Selection box {start, end}
+            sidebarCollapsed: false,        // Phase 3: Sidebar state
+            theme: 'dark'                   // Phase 3: Current theme (dark/light)
         };
 
         // Undo/Redo state
@@ -1587,10 +1750,13 @@
                     ctx.fill();
                 });
             }
-            
+
             ctx.restore();
+
+            // Phase 2: Draw selection highlights
+            drawSelectionHighlights();
         }
-        
+
         function drawPreview(x, y) {
             ctx.save();
             ctx.translate(state.offset.x, state.offset.y);
@@ -2064,7 +2230,270 @@
         });
 
         // ==================== END PHASE 1 FEATURES ====================
-        
+
+        // ==================== PHASE 2 & 3: ADVANCED FEATURES ====================
+
+        // Phase 2: Multi-Selection Functions
+        function toggleMeasurementSelection(index, addToSelection = false) {
+            if (!addToSelection) {
+                // Clear previous selection if not adding
+                state.selectedMeasurements.clear();
+            }
+
+            if (state.selectedMeasurements.has(index)) {
+                state.selectedMeasurements.delete(index);
+            } else {
+                state.selectedMeasurements.add(index);
+            }
+
+            updateBulkActionsBar();
+            updateUI();
+            draw();
+        }
+
+        function selectAllMeasurements() {
+            state.measurements.forEach((_, idx) => state.selectedMeasurements.add(idx));
+            updateBulkActionsBar();
+            updateUI();
+            draw();
+        }
+
+        function deselectAllMeasurements() {
+            state.selectedMeasurements.clear();
+            updateBulkActionsBar();
+            updateUI();
+            draw();
+        }
+
+        function updateBulkActionsBar() {
+            const bulkActions = document.getElementById('bulkActions');
+            const bulkCount = document.getElementById('bulkCount');
+            const count = state.selectedMeasurements.size;
+
+            if (count > 0) {
+                bulkActions.classList.add('show');
+                bulkCount.textContent = `${count} selected`;
+            } else {
+                bulkActions.classList.remove('show');
+            }
+        }
+
+        // Phase 2: Bulk Operations
+        function bulkDelete() {
+            if (state.selectedMeasurements.size === 0) return;
+
+            const count = state.selectedMeasurements.size;
+            if (!confirm(`🗑️ Delete ${count} measurement${count !== 1 ? 's' : ''}?\n\nThis action can be undone with Ctrl+Z.`)) {
+                return;
+            }
+
+            // Sort indices in descending order to delete from end first
+            const indices = Array.from(state.selectedMeasurements).sort((a, b) => b - a);
+            indices.forEach(idx => {
+                state.measurements.splice(idx, 1);
+            });
+
+            state.selectedMeasurements.clear();
+            saveState();
+            updateBulkActionsBar();
+            updateUI();
+            draw();
+            showToast(`✅ Deleted ${count} measurement${count !== 1 ? 's' : ''}`, 'success');
+        }
+
+        function bulkChangeColor() {
+            if (state.selectedMeasurements.size === 0) return;
+
+            const color = prompt('Enter color (hex code, e.g., #ff0000):', '#00ff00');
+            if (!color) return;
+
+            // Validate hex color
+            if (!/^#[0-9A-F]{6}$/i.test(color)) {
+                showToast('⚠️ Invalid color format. Use hex format: #RRGGBB', 'error');
+                return;
+            }
+
+            state.selectedMeasurements.forEach(idx => {
+                state.measurements[idx].color = color;
+            });
+
+            saveState();
+            updateUI();
+            draw();
+            showToast(`✅ Updated color for ${state.selectedMeasurements.size} items`, 'success');
+        }
+
+        function bulkChangeCategory() {
+            if (state.selectedMeasurements.size === 0) return;
+
+            const category = prompt('Enter category name:', '');
+            if (category === null) return;
+
+            const validation = validateCategory(category);
+            if (!validation.valid) {
+                showToast('⚠️ ' + validation.error, 'error');
+                return;
+            }
+
+            state.selectedMeasurements.forEach(idx => {
+                state.measurements[idx].category = validation.value;
+            });
+
+            saveState();
+            updateUI();
+            showToast(`✅ Updated category for ${state.selectedMeasurements.size} items`, 'success');
+        }
+
+        // Phase 2: Enhanced Export
+        function exportEnhancedCSV() {
+            if (state.measurements.length === 0) return;
+
+            const headers = ['#', 'Type', 'Category', 'Value', 'Unit', 'Description', 'Color'];
+
+            // Add measurement rows
+            const rows = state.measurements.map((m, idx) => [
+                (idx + 1).toString(),
+                m.type === 'linear' ? 'Linear' : m.type === 'count' ? 'Count' : 'Area',
+                m.category || '',
+                m.value.toFixed(2),
+                m.unit,
+                m.description || '',
+                m.color || ''
+            ]);
+
+            // Calculate totals
+            const totalLinear = state.measurements.filter(m => m.type === 'linear').reduce((sum, m) => sum + m.value, 0);
+            const totalArea = state.measurements.filter(m => m.type === 'area').reduce((sum, m) => sum + m.value, 0);
+            const totalCount = state.measurements.filter(m => m.type === 'count').reduce((sum, m) => sum + m.value, 0);
+
+            // Add summary rows
+            rows.push([]);  // Empty row
+            rows.push(['SUMMARY', '', '', '', '', '', '']);
+            rows.push(['Total Linear', '', '', totalLinear.toFixed(2), 'ft', '', '']);
+            rows.push(['Total Area', '', '', totalArea.toFixed(2), 'sf', '', '']);
+            rows.push(['Total Count', '', '', totalCount.toString(), 'ea', '', '']);
+            rows.push(['Total Items', '', '', state.measurements.length.toString(), '', '', '']);
+
+            // Add project info if available
+            if (state.projectName) {
+                rows.push([]);
+                rows.push(['Project', state.projectName, '', '', '', '', '']);
+                rows.push(['Scale', state.scaleFactor.toFixed(4) + ' ft/px', '', '', '', '', '']);
+                rows.push(['Date', new Date().toLocaleDateString(), '', '', '', '', '']);
+            }
+
+            // Properly escape CSV fields
+            const escapeCSV = (cell) => `"${String(cell).replace(/"/g, '""')}"`;
+
+            const csv = [
+                headers.map(escapeCSV).join(','),
+                ...rows.map(row => row.map(escapeCSV).join(','))
+            ].join('\n');
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${state.projectName || 'takeoff'}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            showToast('✅ CSV exported successfully', 'success');
+        }
+
+        // Phase 3: Theme Management
+        function setTheme(theme) {
+            state.theme = theme;
+            document.documentElement.setAttribute('data-theme', theme);
+            localStorage.setItem('takeoff-theme', theme);
+
+            // Update theme toggle buttons
+            const darkBtn = document.getElementById('darkThemeBtn');
+            const lightBtn = document.getElementById('lightThemeBtn');
+
+            if (theme === 'dark') {
+                darkBtn.classList.add('active');
+                lightBtn.classList.remove('active');
+                darkBtn.setAttribute('aria-checked', 'true');
+                lightBtn.setAttribute('aria-checked', 'false');
+            } else {
+                lightBtn.classList.add('active');
+                darkBtn.classList.remove('active');
+                lightBtn.setAttribute('aria-checked', 'true');
+                darkBtn.setAttribute('aria-checked', 'false');
+            }
+        }
+
+        function toggleTheme() {
+            setTheme(state.theme === 'dark' ? 'light' : 'dark');
+        }
+
+        // Phase 3: Sidebar Toggle
+        function toggleSidebar() {
+            state.sidebarCollapsed = !state.sidebarCollapsed;
+            const sidebar = document.querySelector('.sidebar');
+            const toggleBtn = document.getElementById('sidebarToggle');
+
+            if (state.sidebarCollapsed) {
+                sidebar.classList.add('collapsed');
+                toggleBtn.textContent = '▶';
+                toggleBtn.setAttribute('aria-label', 'Expand sidebar');
+            } else {
+                sidebar.classList.remove('collapsed');
+                toggleBtn.textContent = '◀';
+                toggleBtn.setAttribute('aria-label', 'Collapse sidebar');
+            }
+
+            // Resize canvas to fit new space
+            setTimeout(() => {
+                resizeCanvas();
+                draw();
+            }, 300);  // Wait for transition
+        }
+
+        // Phase 2: Drawing selection highlights
+        function drawSelectionHighlights() {
+            if (state.selectedMeasurements.size === 0) return;
+
+            state.selectedMeasurements.forEach(idx => {
+                const m = state.measurements[idx];
+                if (!m) return;
+
+                ctx.save();
+                ctx.translate(state.offset.x, state.offset.y);
+                ctx.scale(state.scale, state.scale);
+
+                // Draw highlight glow
+                ctx.strokeStyle = 'rgba(59, 130, 246, 0.5)';  // Blue glow
+                ctx.lineWidth = 6 / state.scale;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+
+                ctx.beginPath();
+                if (m.type === 'count') {
+                    ctx.arc(m.x, m.y, (CONSTANTS.COUNT_MARKER_SIZE + 4) / state.scale, 0, Math.PI * 2);
+                } else if (m.type === 'linear') {
+                    ctx.moveTo(m.x1, m.y1);
+                    ctx.lineTo(m.x2, m.y2);
+                } else if (m.points) {
+                    ctx.moveTo(m.points[0].x, m.points[0].y);
+                    m.points.forEach(p => ctx.lineTo(p.x, p.y));
+                    ctx.closePath();
+                }
+                ctx.stroke();
+
+                ctx.restore();
+            });
+        }
+
+        // Initialize theme on load
+        function initializeTheme() {
+            const savedTheme = localStorage.getItem('takeoff-theme') || 'dark';
+            setTheme(savedTheme);
+        }
+
+        // ==================== END PHASE 2 & 3 FEATURES ====================
+
         function clearAll() {
             const count = state.measurements.length;
             if (confirm(`🗑️ Clear All Measurements?\n\n` +
@@ -2119,9 +2548,10 @@
             const typeIcon = m.type === 'linear' ? '📏' : m.type === 'count' ? '🔢' : '⬛';
             const typeName = m.type === 'linear' ? 'Length' : m.type === 'count' ? 'Count' : 'Area';
             const color = m.color || (m.type === 'linear' ? CONSTANTS.COLOR_LINEAR : m.type === 'count' ? CONSTANTS.COLOR_COUNT : CONSTANTS.COLOR_AREA);
+            const isSelected = state.selectedMeasurements.has(i);
 
             return `
-                <div class="measurement-item">
+                <div class="measurement-item ${isSelected ? 'selected' : ''}" data-index="${i}">
                     <div class="measurement-header">
                         <div style="flex: 1;">
                             <div class="measurement-label">${m.label}</div>
@@ -2259,6 +2689,22 @@
                 });
             });
 
+            // Phase 2: Measurement item click for selection
+            document.querySelectorAll('.measurement-item').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    // Don't trigger selection if clicking on buttons or inputs
+                    if (e.target.classList.contains('delete-btn') ||
+                        e.target.tagName === 'INPUT' ||
+                        e.target.tagName === 'BUTTON') {
+                        return;
+                    }
+
+                    const index = parseInt(item.getAttribute('data-index'));
+                    const ctrlKey = e.ctrlKey || e.metaKey;
+                    toggleMeasurementSelection(index, ctrlKey);
+                });
+            });
+
             updateEditModeUI();
         }
         
@@ -2317,6 +2763,13 @@
                 return;
             }
 
+            // Phase 2: Ctrl+A (Select All)
+            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a' && state.measurements.length > 0) {
+                e.preventDefault();
+                selectAllMeasurements();
+                return;
+            }
+
             // Don't trigger other shortcuts when typing in input fields (except select dropdowns)
             if ((e.target.tagName === 'INPUT' && e.target.type !== 'file' && e.target.type !== 'color') ||
                 e.target.tagName === 'TEXTAREA' ||
@@ -2334,6 +2787,9 @@
                         state.polygonPoints = [];
                         state.drawing = false;
                         draw();
+                    } else if (state.selectedMeasurements.size > 0) {
+                        // Phase 2: Deselect all measurements
+                        deselectAllMeasurements();
                     } else if (state.editMode) {
                         toggleEditMode();
                     }
@@ -2445,7 +2901,7 @@
 
         document.getElementById('editBtn').addEventListener('click', toggleEditMode);
 
-        document.getElementById('exportBtn').addEventListener('click', exportCSV);
+        document.getElementById('exportBtn').addEventListener('click', exportEnhancedCSV);
 
         document.getElementById('clearBtn').addEventListener('click', clearAll);
 
@@ -2453,6 +2909,15 @@
         document.getElementById('saveProjectBtn').addEventListener('click', saveProject);
         document.getElementById('loadProjectBtn').addEventListener('click', loadProject);
         document.getElementById('projectFileInput').addEventListener('change', handleProjectFileLoad);
+
+        // Phase 2 & 3: Advanced features
+        document.getElementById('darkThemeBtn').addEventListener('click', () => setTheme('dark'));
+        document.getElementById('lightThemeBtn').addEventListener('click', () => setTheme('light'));
+        document.getElementById('sidebarToggle').addEventListener('click', toggleSidebar);
+        document.getElementById('bulkDeleteBtn').addEventListener('click', bulkDelete);
+        document.getElementById('bulkColorBtn').addEventListener('click', bulkChangeColor);
+        document.getElementById('bulkCategoryBtn').addEventListener('click', bulkChangeCategory);
+        document.getElementById('bulkDeselectBtn').addEventListener('click', deselectAllMeasurements);
 
         document.getElementById('pdfPrevBtn').addEventListener('click', () => {
             changePDFPage(-1);
@@ -2507,6 +2972,9 @@
 
         // Save initial state
         saveState();
+
+        // Phase 3: Initialize theme
+        initializeTheme();
     </script>
 </body>
 </html>
