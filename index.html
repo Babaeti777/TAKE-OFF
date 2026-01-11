@@ -555,6 +555,166 @@
         }
 
         /* ==================== END PHASE 2 & 3 STYLES ==================== */
+
+        /* ==================== PHASE 4: THUMBNAIL PANEL & CONTINUOUS SCROLL ==================== */
+
+        /* Thumbnail Panel */
+        .thumbnail-panel {
+            width: 200px;
+            min-width: 200px;
+            background: var(--bg-secondary);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            transition: width 0.3s ease, min-width 0.3s ease;
+        }
+
+        .thumbnail-panel.collapsed {
+            width: 0;
+            min-width: 0;
+            overflow: hidden;
+        }
+
+        .thumbnail-toggle {
+            position: absolute;
+            right: 0;
+            top: 50%;
+            transform: translateY(-50%);
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-right: none;
+            padding: 1rem 0.5rem;
+            cursor: pointer;
+            z-index: 100;
+            border-radius: 4px 0 0 4px;
+            transition: all 0.3s;
+            color: var(--text-primary);
+            font-size: 1rem;
+        }
+
+        .thumbnail-toggle:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .thumbnail-header {
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .thumbnail-header h3 {
+            font-size: 1rem;
+            margin: 0;
+        }
+
+        .view-mode-toggle {
+            display: flex;
+            gap: 0.25rem;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            padding: 0.25rem;
+        }
+
+        .view-mode-toggle button {
+            background: transparent;
+            border: none;
+            padding: 0.375rem 0.5rem;
+            cursor: pointer;
+            border-radius: 3px;
+            font-size: 1rem;
+            transition: all 0.2s;
+            color: var(--text-secondary);
+        }
+
+        .view-mode-toggle button:hover {
+            background: var(--bg-primary);
+        }
+
+        .view-mode-toggle button.active {
+            background: var(--btn-primary);
+        }
+
+        .thumbnail-list {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0.5rem;
+        }
+
+        .thumbnail-loading {
+            text-align: center;
+            padding: 2rem 1rem;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+
+        .thumbnail-item {
+            margin-bottom: 0.5rem;
+            border: 2px solid transparent;
+            border-radius: 4px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: var(--bg-tertiary);
+            position: relative;
+        }
+
+        .thumbnail-item:hover {
+            border-color: var(--btn-primary);
+            transform: translateX(4px);
+        }
+
+        .thumbnail-item.active {
+            border-color: var(--btn-primary);
+            box-shadow: 0 0 0 2px var(--btn-primary)33;
+        }
+
+        .thumbnail-image {
+            width: 100%;
+            display: block;
+            background: white;
+        }
+
+        .thumbnail-label {
+            padding: 0.375rem;
+            font-size: 0.75rem;
+            text-align: center;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .thumbnail-badge {
+            background: var(--btn-primary);
+            color: white;
+            padding: 0.125rem 0.375rem;
+            border-radius: 10px;
+            font-size: 0.65rem;
+            font-weight: bold;
+        }
+
+        /* Continuous scroll mode */
+        .canvas-area.continuous-mode {
+            overflow-y: auto;
+        }
+
+        .canvas-area.continuous-mode canvas {
+            display: block;
+            margin: 0 auto;
+        }
+
+        /* Adjust main-content for thumbnail panel */
+        .main-content {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        /* ==================== END PHASE 4 STYLES ==================== */
     </style>
 </head>
 <body>
@@ -667,6 +827,23 @@
         </div>
         
         <div class="main-content">
+            <!-- Phase 4: Thumbnail Panel -->
+            <div class="thumbnail-panel" id="thumbnailPanel">
+                <button class="thumbnail-toggle" id="thumbnailToggle" aria-label="Toggle thumbnails" title="Toggle Thumbnails">
+                    ◀
+                </button>
+                <div class="thumbnail-header">
+                    <h3>Pages</h3>
+                    <div class="view-mode-toggle">
+                        <button id="pageModeBtn" class="active" title="Page-by-page view">📄</button>
+                        <button id="continuousModeBtn" title="Continuous scroll">📜</button>
+                    </div>
+                </div>
+                <div class="thumbnail-list" id="thumbnailList">
+                    <div class="thumbnail-loading">Loading thumbnails...</div>
+                </div>
+            </div>
+
             <div class="canvas-area">
                 <canvas id="canvas" role="img" aria-label="Construction drawing canvas with measurements"></canvas>
                 <div class="empty-state" id="emptyState" role="status">
@@ -1065,8 +1242,17 @@
                     document.getElementById('pdfControls').style.display = 'flex';
                     updatePageInfo();
                 }
-                
+
+                // Phase 4: Generate thumbnails in background
                 loadingOverlay.classList.remove('show');
+
+                if (pdf.numPages > 1) {
+                    loadingText.textContent = 'Generating page thumbnails...';
+                    loadingOverlay.classList.add('show');
+                    await generatePageThumbnails();
+                    loadingOverlay.classList.remove('show');
+                    showToast(`✅ Loaded ${pdf.numPages} pages`, 'success');
+                }
                 
             } catch (error) {
                 console.error('Error loading PDF:', error);
@@ -1164,6 +1350,8 @@
             // Render at base quality when changing pages
             await renderPDFPage(newPage, 1);
             updatePageInfo();
+            updateActiveThumbnail();  // Phase 4: Update thumbnail selection
+            renderThumbnails();  // Phase 4: Update badge counts
 
             loadingOverlay.classList.remove('show');
         }
@@ -1190,6 +1378,8 @@
             // Render at base quality when changing pages
             await renderPDFPage(page, 1);
             updatePageInfo();
+            updateActiveThumbnail();  // Phase 4: Update thumbnail selection
+            renderThumbnails();  // Phase 4: Update badge counts
 
             loadingOverlay.classList.remove('show');
         }
@@ -2512,6 +2702,193 @@
 
         // ==================== END PHASE 2 & 3 FEATURES ====================
 
+        // ==================== PHASE 4: THUMBNAILS & CONTINUOUS SCROLL ====================
+
+        // Generate page thumbnails
+        async function generatePageThumbnails() {
+            if (!state.pdfDoc) return;
+
+            const thumbnailList = document.getElementById('thumbnailList');
+            thumbnailList.innerHTML = '<div class="thumbnail-loading">Generating thumbnails...</div>';
+
+            state.pageThumbnails = [];
+
+            try {
+                for (let pageNum = 1; pageNum <= state.totalPages; pageNum++) {
+                    const page = await state.pdfDoc.getPage(pageNum);
+
+                    // Small viewport for thumbnail
+                    const viewport = page.getViewport({ scale: 0.3 });
+
+                    // Create thumbnail canvas
+                    const thumbCanvas = document.createElement('canvas');
+                    const thumbCtx = thumbCanvas.getContext('2d');
+                    thumbCanvas.height = viewport.height;
+                    thumbCanvas.width = viewport.width;
+
+                    // Render page to thumbnail
+                    await page.render({
+                        canvasContext: thumbCtx,
+                        viewport: viewport
+                    }).promise;
+
+                    // Store thumbnail data URL
+                    state.pageThumbnails[pageNum - 1] = thumbCanvas.toDataURL();
+                }
+
+                // Render thumbnails
+                renderThumbnails();
+            } catch (error) {
+                console.error('Error generating thumbnails:', error);
+                thumbnailList.innerHTML = '<div class="thumbnail-loading">Error loading thumbnails</div>';
+            }
+        }
+
+        // Render thumbnail list
+        function renderThumbnails() {
+            const thumbnailList = document.getElementById('thumbnailList');
+
+            if (state.pageThumbnails.length === 0) {
+                thumbnailList.innerHTML = '<div class="thumbnail-loading">No pages</div>';
+                return;
+            }
+
+            thumbnailList.innerHTML = state.pageThumbnails.map((dataUrl, index) => {
+                const pageNum = index + 1;
+                const isActive = pageNum === state.currentPage;
+                const pageMeasurements = state.measurements.filter(m => m.page === pageNum);
+                const count = pageMeasurements.length;
+
+                return `
+                    <div class="thumbnail-item ${isActive ? 'active' : ''}" data-page="${pageNum}">
+                        <img src="${dataUrl}" alt="Page ${pageNum}" class="thumbnail-image">
+                        <div class="thumbnail-label">
+                            <span>Page ${pageNum}</span>
+                            ${count > 0 ? `<span class="thumbnail-badge">${count}</span>` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // Add click handlers
+            document.querySelectorAll('.thumbnail-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    const pageNum = parseInt(item.getAttribute('data-page'));
+                    goToPage(pageNum);
+                });
+            });
+        }
+
+        // Update active thumbnail
+        function updateActiveThumbnail() {
+            document.querySelectorAll('.thumbnail-item').forEach(item => {
+                const pageNum = parseInt(item.getAttribute('data-page'));
+                if (pageNum === state.currentPage) {
+                    item.classList.add('active');
+                } else {
+                    item.classList.remove('active');
+                }
+            });
+        }
+
+        // Toggle thumbnail panel
+        function toggleThumbnailPanel() {
+            state.thumbnailsCollapsed = !state.thumbnailsCollapsed;
+            const panel = document.getElementById('thumbnailPanel');
+            const toggleBtn = document.getElementById('thumbnailToggle');
+
+            if (state.thumbnailsCollapsed) {
+                panel.classList.add('collapsed');
+                toggleBtn.textContent = '▶';
+                toggleBtn.setAttribute('aria-label', 'Expand thumbnails');
+            } else {
+                panel.classList.remove('collapsed');
+                toggleBtn.textContent = '◀';
+                toggleBtn.setAttribute('aria-label', 'Collapse thumbnails');
+            }
+
+            // Resize canvas after transition
+            setTimeout(() => {
+                resizeCanvas();
+                draw();
+            }, 300);
+        }
+
+        // View mode switching
+        function setViewMode(mode) {
+            state.viewMode = mode;
+            const canvasArea = document.querySelector('.canvas-area');
+            const pageModeBtn = document.getElementById('pageModeBtn');
+            const continuousModeBtn = document.getElementById('continuousModeBtn');
+
+            if (mode === 'continuous') {
+                canvasArea.classList.add('continuous-mode');
+                continuousModeBtn.classList.add('active');
+                pageModeBtn.classList.remove('active');
+                showToast('🔄 Continuous scroll mode enabled', 'info');
+
+                // TODO: Implement continuous rendering
+                // For now, show message
+                setTimeout(() => {
+                    showToast('📄 Continuous mode: Multi-page rendering coming soon!\nUsing page-by-page for now.', 'info');
+                    setViewMode('page');
+                }, 1500);
+            } else {
+                canvasArea.classList.remove('continuous-mode');
+                pageModeBtn.classList.add('active');
+                continuousModeBtn.classList.remove('active');
+            }
+
+            resizeCanvas();
+            draw();
+        }
+
+        // Enhanced zoom with better quality
+        async function zoomEnhanced(factor) {
+            const oldScale = state.scale;
+            state.scale *= factor;
+            state.scale = Math.max(CONSTANTS.MIN_SCALE, Math.min(CONSTANTS.MAX_SCALE, state.scale));
+
+            // Only update if scale actually changed
+            if (oldScale === state.scale) return;
+
+            updateUI();
+            draw();
+
+            // Re-render PDF at higher quality when zooming in
+            if (state.pdfDoc) {
+                // Debounce: wait for user to stop zooming
+                clearTimeout(state.zoomTimeout);
+                state.zoomTimeout = setTimeout(async () => {
+                    let targetQuality = 1;
+
+                    if (state.scale > 3) {
+                        targetQuality = CONSTANTS.PDF_QUALITY_MULTIPLIER;
+                    } else if (state.scale > 2) {
+                        targetQuality = 2.5;
+                    } else if (state.scale > 1.5) {
+                        targetQuality = 2;
+                    } else if (state.scale > 0.8) {
+                        targetQuality = 1.5;
+                    }
+
+                    // Re-render if we need higher quality
+                    if (targetQuality > state.pdfRenderScale) {
+                        state.lastZoomLevel = state.scale;
+                        const loadingOverlay = document.getElementById('loadingOverlay');
+                        loadingOverlay.classList.add('show');
+
+                        await renderPDFPage(state.currentPage, targetQuality);
+
+                        loadingOverlay.classList.remove('show');
+                        showToast(`✨ Rendered at ${targetQuality}x quality`, 'success');
+                    }
+                }, 500); // Wait 500ms after last zoom
+            }
+        }
+
+        // ==================== END PHASE 4 FEATURES ====================
+
         function clearAll() {
             const count = state.measurements.length;
             if (confirm(`🗑️ Clear All Measurements?\n\n` +
@@ -2774,10 +3151,10 @@
 
             if (delta < 0) {
                 // Zoom in
-                zoom(CONSTANTS.ZOOM_IN_FACTOR);
+                zoomEnhanced(CONSTANTS.ZOOM_IN_FACTOR);
             } else {
                 // Zoom out
-                zoom(CONSTANTS.ZOOM_OUT_FACTOR);
+                zoomEnhanced(CONSTANTS.ZOOM_OUT_FACTOR);
             }
         }, { passive: false });
 
@@ -2903,14 +3280,14 @@
                 case '=':
                     e.preventDefault();
                     if (!document.getElementById('zoomInBtn').disabled) {
-                        zoom(CONSTANTS.ZOOM_IN_FACTOR);
+                        zoomEnhanced(CONSTANTS.ZOOM_IN_FACTOR);
                     }
                     break;
                 case '-':
                 case '_':
                     e.preventDefault();
                     if (!document.getElementById('zoomOutBtn').disabled) {
-                        zoom(CONSTANTS.ZOOM_OUT_FACTOR);
+                        zoomEnhanced(CONSTANTS.ZOOM_OUT_FACTOR);
                     }
                     break;
             }
@@ -2940,11 +3317,11 @@
         document.getElementById('calibrateBtn').addEventListener('click', calibrateScale);
 
         document.getElementById('zoomInBtn').addEventListener('click', () => {
-            zoom(CONSTANTS.ZOOM_IN_FACTOR);
+            zoomEnhanced(CONSTANTS.ZOOM_IN_FACTOR);
         });
 
         document.getElementById('zoomOutBtn').addEventListener('click', () => {
-            zoom(CONSTANTS.ZOOM_OUT_FACTOR);
+            zoomEnhanced(CONSTANTS.ZOOM_OUT_FACTOR);
         });
 
         document.getElementById('editBtn').addEventListener('click', toggleEditMode);
@@ -2966,6 +3343,11 @@
         document.getElementById('bulkColorBtn').addEventListener('click', bulkChangeColor);
         document.getElementById('bulkCategoryBtn').addEventListener('click', bulkChangeCategory);
         document.getElementById('bulkDeselectBtn').addEventListener('click', deselectAllMeasurements);
+
+        // Phase 4: Thumbnail panel and view mode
+        document.getElementById('thumbnailToggle').addEventListener('click', toggleThumbnailPanel);
+        document.getElementById('pageModeBtn').addEventListener('click', () => setViewMode('page'));
+        document.getElementById('continuousModeBtn').addEventListener('click', () => setViewMode('continuous'));
 
         document.getElementById('pdfPrevBtn').addEventListener('click', () => {
             changePDFPage(-1);
