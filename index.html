@@ -926,10 +926,10 @@
 
         // Constants
         const CONSTANTS = {
-            HANDLE_THRESHOLD: 10,           // Distance to detect handle clicks (pixels)
+            HANDLE_THRESHOLD: 15,           // Distance to detect handle clicks (pixels) - larger for easier editing
             MIN_DRAG_DISTANCE: 5,           // Minimum drag distance to create measurement
             POINT_RADIUS_NORMAL: 4,         // Point radius in normal mode
-            POINT_RADIUS_EDIT: 6,           // Point radius in edit mode
+            POINT_RADIUS_EDIT: 8,           // Point radius in edit mode (larger for easier editing)
             LABEL_OFFSET: 10,               // Label offset from measurement
             LINE_WIDTH: 2,                  // Stroke width for measurements
             DASH_SIZE: 5,                   // Dash length for preview
@@ -982,7 +982,11 @@
             theme: 'dark',                  // Phase 3: Current theme (dark/light)
             thumbnailsCollapsed: false,     // Phase 4: Thumbnail panel state
             viewMode: 'page',               // Phase 4: 'page' or 'continuous'
-            pageThumbnails: []              // Phase 4: Cached page thumbnails
+            pageThumbnails: [],             // Phase 4: Cached page thumbnails
+            scrollTimeout: null,            // Phase 4: Timeout for scroll debouncing
+            zoomTimeout: null,              // Phase 4: Timeout for zoom quality upgrade
+            hoveredMeasurement: null,       // Phase 4: Currently hovered measurement index
+            hoveredHandle: null             // Phase 4: Currently hovered handle
         };
 
         // Undo/Redo state
@@ -1404,7 +1408,32 @@
         canvas.addEventListener('mousemove', handleMouseMove);
         canvas.addEventListener('mouseup', handleMouseUp);
         canvas.addEventListener('mouseleave', handleMouseUp);
-        
+        canvas.addEventListener('dblclick', handleDoubleClick);
+
+        function handleDoubleClick(e) {
+            if (!state.image) return;
+
+            const { canvasX, canvasY } = getEventCanvasPosition(e);
+
+            // Find if we clicked on a measurement
+            const handle = findHandle(canvasX, canvasY);
+            if (handle) {
+                // Enter edit mode if not already
+                if (!state.editMode) {
+                    state.editMode = true;
+                    state.drawing = false;
+                    state.startPoint = null;
+                    setTool('move');
+                }
+                // Select the clicked measurement
+                state.activeMeasurement = handle.index;
+                state.activeHandle = handle.handle;
+                updateEditModeUI();
+                draw();
+                showToast('📝 Measurement selected for editing', 'info');
+            }
+        }
+
         function getEventCanvasPosition(e) {
             const rect = canvas.getBoundingClientRect();
             const scaleX = canvas.width / rect.width;
@@ -1640,6 +1669,7 @@
             const { pixelX, pixelY, canvasX, canvasY } = getEventCanvasPosition(e);
 
             if (state.editingHandle && state.activeMeasurement !== null) {
+                canvas.style.cursor = 'grabbing';
                 const measurement = state.measurements[state.activeMeasurement];
                 if (measurement) {
                     if (measurement.type === 'count') {
@@ -1672,6 +1702,7 @@
             }
 
             if (state.dragging) {
+                canvas.style.cursor = 'grabbing';
                 state.offset = {
                     x: state.originalOffset.x + (pixelX - state.dragStart.x),
                     y: state.originalOffset.y + (pixelY - state.dragStart.y)
@@ -1680,6 +1711,33 @@
             } else if (state.drawing) {
                 draw();
                 drawPreview(canvasX, canvasY);
+            } else {
+                // Update hover state and cursor when not dragging or editing
+                const prevHovered = state.hoveredMeasurement;
+                const prevHoveredHandle = state.hoveredHandle;
+
+                // Check if hovering over a handle in edit mode
+                if (state.editMode) {
+                    const handle = findHandle(canvasX, canvasY);
+                    if (handle) {
+                        state.hoveredMeasurement = handle.index;
+                        state.hoveredHandle = handle.handle;
+                        canvas.style.cursor = 'grab';
+                    } else {
+                        state.hoveredMeasurement = null;
+                        state.hoveredHandle = null;
+                        canvas.style.cursor = state.tool === 'move' ? 'grab' : 'crosshair';
+                    }
+                } else {
+                    state.hoveredMeasurement = null;
+                    state.hoveredHandle = null;
+                    canvas.style.cursor = state.tool === 'move' ? 'grab' : 'crosshair';
+                }
+
+                // Redraw if hover state changed
+                if (prevHovered !== state.hoveredMeasurement || prevHoveredHandle !== state.hoveredHandle) {
+                    draw();
+                }
             }
         }
 
@@ -1721,6 +1779,7 @@
                 state.editingHandle = false;
                 state.activeHandle = null;
                 state.activeMeasurement = null;
+                saveState(); // Save state after editing
                 updateUI();
                 draw();
                 return;
@@ -1829,12 +1888,20 @@
                     // Count measurement - draw circular marker with number
                     const markerSize = CONSTANTS.COUNT_MARKER_SIZE / state.scale;
                     const isActive = state.editMode && idx === state.activeMeasurement;
+                    const isHovered = state.editMode && idx === state.hoveredMeasurement;
 
                     // Draw outer circle
                     ctx.fillStyle = isActive ? CONSTANTS.COLOR_ACTIVE : color;
                     ctx.beginPath();
-                    ctx.arc(m.x, m.y, markerSize, 0, Math.PI * 2);
+                    ctx.arc(m.x, m.y, markerSize * (isHovered ? 1.2 : 1), 0, Math.PI * 2);
                     ctx.fill();
+                    if (isHovered && !isActive) {
+                        ctx.strokeStyle = CONSTANTS.COLOR_ACTIVE;
+                        ctx.lineWidth = 3 / state.scale;
+                        ctx.stroke();
+                        ctx.strokeStyle = color;
+                        ctx.lineWidth = CONSTANTS.LINE_WIDTH / state.scale;
+                    }
 
                     // Draw inner circle (white background for number)
                     ctx.fillStyle = '#000000';
@@ -1859,16 +1926,34 @@
                     const pointRadius = (state.editMode ? CONSTANTS.POINT_RADIUS_EDIT : CONSTANTS.POINT_RADIUS_NORMAL) / state.scale;
                     const startActive = state.editMode && idx === state.activeMeasurement && state.activeHandle === 'start';
                     const endActive = state.editMode && idx === state.activeMeasurement && state.activeHandle === 'end';
+                    const startHovered = state.editMode && idx === state.hoveredMeasurement && state.hoveredHandle === 'start';
+                    const endHovered = state.editMode && idx === state.hoveredMeasurement && state.hoveredHandle === 'end';
 
+                    // Start point
                     ctx.fillStyle = startActive ? CONSTANTS.COLOR_ACTIVE : color;
                     ctx.beginPath();
-                    ctx.arc(m.x1, m.y1, pointRadius, 0, Math.PI * 2);
+                    ctx.arc(m.x1, m.y1, pointRadius * (startHovered ? 1.3 : 1), 0, Math.PI * 2);
                     ctx.fill();
+                    if (startHovered && !startActive) {
+                        ctx.strokeStyle = CONSTANTS.COLOR_ACTIVE;
+                        ctx.lineWidth = 2 / state.scale;
+                        ctx.stroke();
+                    }
 
+                    // End point
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = CONSTANTS.LINE_WIDTH / state.scale;
                     ctx.fillStyle = endActive ? CONSTANTS.COLOR_ACTIVE : color;
                     ctx.beginPath();
-                    ctx.arc(m.x2, m.y2, pointRadius, 0, Math.PI * 2);
+                    ctx.arc(m.x2, m.y2, pointRadius * (endHovered ? 1.3 : 1), 0, Math.PI * 2);
                     ctx.fill();
+                    if (endHovered && !endActive) {
+                        ctx.strokeStyle = CONSTANTS.COLOR_ACTIVE;
+                        ctx.lineWidth = 2 / state.scale;
+                        ctx.stroke();
+                    }
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = CONSTANTS.LINE_WIDTH / state.scale;
 
                     // Label for linear
                     ctx.fillStyle = CONSTANTS.COLOR_ACTIVE;
@@ -1892,10 +1977,18 @@
                         const pointRadius = (state.editMode ? CONSTANTS.POINT_RADIUS_EDIT : CONSTANTS.POINT_RADIUS_NORMAL) / state.scale;
                         m.points.forEach((point, pIdx) => {
                             const isActive = state.editMode && idx === state.activeMeasurement && state.activeHandle === pIdx;
+                            const isHovered = state.editMode && idx === state.hoveredMeasurement && state.hoveredHandle === pIdx;
                             ctx.fillStyle = isActive ? CONSTANTS.COLOR_ACTIVE : color;
                             ctx.beginPath();
-                            ctx.arc(point.x, point.y, pointRadius, 0, Math.PI * 2);
+                            ctx.arc(point.x, point.y, pointRadius * (isHovered ? 1.3 : 1), 0, Math.PI * 2);
                             ctx.fill();
+                            if (isHovered && !isActive) {
+                                ctx.strokeStyle = CONSTANTS.COLOR_ACTIVE;
+                                ctx.lineWidth = 2 / state.scale;
+                                ctx.stroke();
+                                ctx.strokeStyle = color;
+                                ctx.lineWidth = CONSTANTS.LINE_WIDTH / state.scale;
+                            }
                         });
 
                         // Label at centroid
@@ -3146,15 +3239,37 @@
         canvas.addEventListener('wheel', (e) => {
             if (!state.image) return;
 
-            e.preventDefault();
-            const delta = e.deltaY;
+            // Zoom only with Ctrl+Scroll
+            if (e.ctrlKey) {
+                e.preventDefault();
+                const delta = e.deltaY;
 
-            if (delta < 0) {
-                // Zoom in
-                zoomEnhanced(CONSTANTS.ZOOM_IN_FACTOR);
+                if (delta < 0) {
+                    // Zoom in
+                    zoomEnhanced(CONSTANTS.ZOOM_IN_FACTOR);
+                } else {
+                    // Zoom out
+                    zoomEnhanced(CONSTANTS.ZOOM_OUT_FACTOR);
+                }
             } else {
-                // Zoom out
-                zoomEnhanced(CONSTANTS.ZOOM_OUT_FACTOR);
+                // Regular scroll for page navigation (in page mode)
+                if (state.viewMode === 'page' && state.totalPages > 1) {
+                    e.preventDefault();
+                    const delta = e.deltaY;
+
+                    // Debounce scroll events to prevent rapid page changes
+                    clearTimeout(state.scrollTimeout);
+                    state.scrollTimeout = setTimeout(() => {
+                        if (delta > 0 && state.currentPage < state.totalPages) {
+                            // Scroll down - next page
+                            changePDFPage(1);
+                        } else if (delta < 0 && state.currentPage > 1) {
+                            // Scroll up - previous page
+                            changePDFPage(-1);
+                        }
+                    }, 150);
+                }
+                // In continuous mode, allow natural scrolling (do not prevent default)
             }
         }, { passive: false });
 
@@ -3228,8 +3343,20 @@
                     break;
                 case 'delete':
                 case 'backspace':
-                    if (state.measurements.length > 0) {
-                        e.preventDefault(); // Prevent browser back navigation
+                    e.preventDefault(); // Prevent browser back navigation
+                    if (state.selectedMeasurements.size > 0) {
+                        // Delete selected measurements
+                        bulkDelete();
+                    } else if (state.editMode && state.activeMeasurement !== null) {
+                        // Delete active measurement in edit mode
+                        if (confirm('Delete this measurement?')) {
+                            deleteMeasurement(state.activeMeasurement);
+                            state.activeMeasurement = null;
+                            state.activeHandle = null;
+                            state.editingHandle = false;
+                        }
+                    } else if (state.measurements.length > 0) {
+                        // Delete last measurement as fallback
                         if (confirm('Delete last measurement?')) {
                             deleteMeasurement(state.measurements.length - 1);
                         }
