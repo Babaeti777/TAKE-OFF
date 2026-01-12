@@ -758,6 +758,9 @@
                         <button class="btn-secondary" id="linearBtn" disabled aria-label="Linear tool (L)" title="Linear (L)">
                             📏
                         </button>
+                        <button class="btn-secondary" id="polylineBtn" disabled aria-label="Continuous Linear tool (P)" title="Continuous Linear (P)">
+                            📐
+                        </button>
                         <button class="btn-secondary" id="areaBtn" disabled aria-label="Area tool (A)" title="Area (A)">
                             ⬛
                         </button>
@@ -959,6 +962,7 @@
             drawing: false,
             startPoint: null,
             polygonPoints: [],              // Points for polygon area measurement
+            polylinePoints: [],             // Points for continuous linear measurement
             offset: { x: CONSTANTS.DEFAULT_OFFSET_X, y: CONSTANTS.DEFAULT_OFFSET_Y },
             dragging: false,
             dragStart: { x: 0, y: 0 },
@@ -1558,6 +1562,12 @@
                 p.y *= scaleY;
             });
 
+            // Scale polyline in progress
+            state.polylinePoints.forEach(p => {
+                p.x *= scaleX;
+                p.y *= scaleY;
+            });
+
             // Scale start point if drawing
             if (state.startPoint) {
                 state.startPoint.x *= scaleX;
@@ -1573,6 +1583,19 @@
                 const length = pixels * state.scaleFactor;
                 measurement.value = length;
                 measurement.label = length.toFixed(2) + ' ft';
+            } else if (measurement.type === 'polyline' && measurement.points) {
+                // Polyline - calculate total length of all segments
+                let totalLength = 0;
+                for (let i = 0; i < measurement.points.length - 1; i++) {
+                    const p1 = measurement.points[i];
+                    const p2 = measurement.points[i + 1];
+                    const dx = p2.x - p1.x;
+                    const dy = p2.y - p1.y;
+                    const pixels = Math.sqrt(dx * dx + dy * dy);
+                    totalLength += pixels * state.scaleFactor;
+                }
+                measurement.value = totalLength;
+                measurement.label = totalLength.toFixed(2) + ' ft';
             } else {
                 // Area measurement - supports both polygon and rectangle formats
                 if (measurement.points) {
@@ -1637,6 +1660,20 @@
 
                 // Add point to polygon
                 state.polygonPoints.push({ x: canvasX, y: canvasY });
+                state.drawing = true;
+                draw();
+            } else if (state.tool === 'polyline') {
+                // Continuous linear measurement (polyline)
+                const clickThreshold = 15 / state.scale;
+
+                // Check if double-clicking near last point to complete
+                if (state.polylinePoints.length >= 2 && e.detail === 2) {
+                    completePolyline();
+                    return;
+                }
+
+                // Add point to polyline
+                state.polylinePoints.push({ x: canvasX, y: canvasY });
                 state.drawing = true;
                 draw();
             } else if (state.tool === 'count') {
@@ -1768,6 +1805,46 @@
 
             state.measurements.push(measurement);
             state.polygonPoints = [];
+            state.drawing = false;
+            saveState();
+            updateUI();
+            draw();
+        }
+
+        function completePolyline() {
+            if (state.polylinePoints.length < 2) {
+                alert('⚠️ Continuous Linear\n\nYou need at least 2 points to create a continuous linear measurement.');
+                state.polylinePoints = [];
+                state.drawing = false;
+                draw();
+                return;
+            }
+
+            // Calculate total length of all segments
+            let totalLength = 0;
+            for (let i = 0; i < state.polylinePoints.length - 1; i++) {
+                const p1 = state.polylinePoints[i];
+                const p2 = state.polylinePoints[i + 1];
+                const dx = p2.x - p1.x;
+                const dy = p2.y - p1.y;
+                const pixels = Math.sqrt(dx * dx + dy * dy);
+                totalLength += pixels * state.scaleFactor;
+            }
+
+            const measurement = {
+                type: 'polyline',
+                points: [...state.polylinePoints],  // Store all polyline points
+                value: totalLength,
+                unit: 'ft',
+                label: totalLength.toFixed(2) + ' ft',
+                description: '',
+                color: CONSTANTS.COLOR_LINEAR,
+                category: '',
+                page: state.currentPage  // Phase 4: Associate with current page
+            };
+
+            state.measurements.push(measurement);
+            state.polylinePoints = [];
             state.drawing = false;
             saveState();
             updateUI();
@@ -1961,6 +2038,41 @@
                     const labelX = (m.x1 + m.x2) / 2;
                     const labelY = (m.y1 + m.y2) / 2 - CONSTANTS.LABEL_OFFSET / state.scale;
                     ctx.fillText(m.label, labelX, labelY);
+                } else if (m.type === 'polyline' && m.points) {
+                    // Continuous linear (polyline)
+                    if (m.points.length > 0) {
+                        // Draw all line segments
+                        ctx.moveTo(m.points[0].x, m.points[0].y);
+                        for (let i = 1; i < m.points.length; i++) {
+                            ctx.lineTo(m.points[i].x, m.points[i].y);
+                        }
+                        ctx.stroke();
+
+                        // Draw all points
+                        const pointRadius = (state.editMode ? CONSTANTS.POINT_RADIUS_EDIT : CONSTANTS.POINT_RADIUS_NORMAL) / state.scale;
+                        m.points.forEach((point, pIdx) => {
+                            const isActive = state.editMode && idx === state.activeMeasurement && state.activeHandle === pIdx;
+                            const isHovered = state.editMode && idx === state.hoveredMeasurement && state.hoveredHandle === pIdx;
+                            ctx.fillStyle = isActive ? CONSTANTS.COLOR_ACTIVE : color;
+                            ctx.beginPath();
+                            ctx.arc(point.x, point.y, pointRadius * (isHovered ? 1.3 : 1), 0, Math.PI * 2);
+                            ctx.fill();
+                            if (isHovered && !isActive) {
+                                ctx.strokeStyle = CONSTANTS.COLOR_ACTIVE;
+                                ctx.lineWidth = 2 / state.scale;
+                                ctx.stroke();
+                                ctx.strokeStyle = color;
+                                ctx.lineWidth = CONSTANTS.LINE_WIDTH / state.scale;
+                            }
+                        });
+
+                        // Label at midpoint of first and last point
+                        const labelX = (m.points[0].x + m.points[m.points.length - 1].x) / 2;
+                        const labelY = (m.points[0].y + m.points[m.points.length - 1].y) / 2 - CONSTANTS.LABEL_OFFSET / state.scale;
+                        ctx.fillStyle = CONSTANTS.COLOR_ACTIVE;
+                        ctx.font = `${CONSTANTS.FONT_SIZE / state.scale}px Arial`;
+                        ctx.fillText(m.label, labelX, labelY);
+                    }
                 } else if (m.points) {
                     // Polygon area
                     if (m.points.length > 0) {
@@ -2026,6 +2138,31 @@
                 }
             });
 
+            // Draw polyline in progress
+            if (state.polylinePoints.length > 0) {
+                ctx.strokeStyle = CONSTANTS.COLOR_LINEAR;
+                ctx.fillStyle = CONSTANTS.COLOR_LINEAR;
+                ctx.lineWidth = CONSTANTS.LINE_WIDTH / state.scale;
+                ctx.setLineDash([CONSTANTS.DASH_SIZE / state.scale, CONSTANTS.DASH_SIZE / state.scale]);
+
+                ctx.beginPath();
+                ctx.moveTo(state.polylinePoints[0].x, state.polylinePoints[0].y);
+                for (let i = 1; i < state.polylinePoints.length; i++) {
+                    ctx.lineTo(state.polylinePoints[i].x, state.polylinePoints[i].y);
+                }
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // Draw points
+                const pointRadius = CONSTANTS.POINT_RADIUS_NORMAL / state.scale;
+                state.polylinePoints.forEach((point, i) => {
+                    ctx.fillStyle = i === 0 ? CONSTANTS.COLOR_ACTIVE : CONSTANTS.COLOR_LINEAR;
+                    ctx.beginPath();
+                    ctx.arc(point.x, point.y, pointRadius * (i === state.polylinePoints.length - 1 ? 1.5 : 1), 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            }
+
             // Draw polygon in progress
             if (state.polygonPoints.length > 0) {
                 ctx.strokeStyle = CONSTANTS.COLOR_AREA;
@@ -2081,6 +2218,20 @@
                 ctx.beginPath();
                 ctx.arc(x, y, CONSTANTS.POINT_RADIUS_NORMAL / state.scale, 0, Math.PI * 2);
                 ctx.fill();
+            } else if (state.tool === 'polyline' && state.polylinePoints.length > 0) {
+                // Show preview line from last point to current mouse position
+                const lastPoint = state.polylinePoints[state.polylinePoints.length - 1];
+
+                ctx.strokeStyle = CONSTANTS.COLOR_LINEAR;
+                ctx.lineWidth = CONSTANTS.LINE_WIDTH / state.scale;
+                ctx.setLineDash([CONSTANTS.DASH_SIZE / state.scale, CONSTANTS.DASH_SIZE / state.scale]);
+
+                ctx.beginPath();
+                ctx.moveTo(lastPoint.x, lastPoint.y);
+                ctx.lineTo(x, y);
+                ctx.stroke();
+
+                ctx.setLineDash([]);
             } else if (state.tool === 'area' && state.polygonPoints.length > 0) {
                 // Show preview line from last point to current mouse position
                 const lastPoint = state.polygonPoints[state.polygonPoints.length - 1];
@@ -2117,11 +2268,13 @@
 
             document.getElementById('panBtn').classList.remove('btn-active');
             document.getElementById('linearBtn').classList.remove('btn-active');
+            document.getElementById('polylineBtn').classList.remove('btn-active');
             document.getElementById('areaBtn').classList.remove('btn-active');
             document.getElementById('countBtn').classList.remove('btn-active');
 
             if (tool === 'move') document.getElementById('panBtn').classList.add('btn-active');
             if (tool === 'linear') document.getElementById('linearBtn').classList.add('btn-active');
+            if (tool === 'polyline') document.getElementById('polylineBtn').classList.add('btn-active');
             if (tool === 'area') document.getElementById('areaBtn').classList.add('btn-active');
             if (tool === 'count') document.getElementById('countBtn').classList.add('btn-active');
         }
@@ -2378,7 +2531,7 @@
                     metadata: {
                         measurementCount: state.measurements.length,
                         categories: [...new Set(state.measurements.map(m => m.category).filter(c => c))],
-                        totalLinear: state.measurements.filter(m => m.type === 'linear').reduce((sum, m) => sum + m.value, 0),
+                        totalLinear: state.measurements.filter(m => m.type === 'linear' || m.type === 'polyline').reduce((sum, m) => sum + m.value, 0),
                         totalArea: state.measurements.filter(m => m.type === 'area').reduce((sum, m) => sum + m.value, 0),
                         totalCount: state.measurements.filter(m => m.type === 'count').reduce((sum, m) => sum + m.value, 0)
                     }
@@ -2663,7 +2816,7 @@
             ]);
 
             // Calculate totals
-            const totalLinear = state.measurements.filter(m => m.type === 'linear').reduce((sum, m) => sum + m.value, 0);
+            const totalLinear = state.measurements.filter(m => m.type === 'linear' || m.type === 'polyline').reduce((sum, m) => sum + m.value, 0);
             const totalArea = state.measurements.filter(m => m.type === 'area').reduce((sum, m) => sum + m.value, 0);
             const totalCount = state.measurements.filter(m => m.type === 'count').reduce((sum, m) => sum + m.value, 0);
 
@@ -3091,7 +3244,7 @@
                 });
 
                 // Phase 4: Calculate totals for current page only
-                const totalLinear = pageMeasurements.filter(m => m.type === 'linear').reduce((sum, m) => sum + m.value, 0);
+                const totalLinear = pageMeasurements.filter(m => m.type === 'linear' || m.type === 'polyline').reduce((sum, m) => sum + m.value, 0);
                 const totalArea = pageMeasurements.filter(m => m.type === 'area').reduce((sum, m) => sum + m.value, 0);
                 const totalCount = pageMeasurements.filter(m => m.type === 'count').reduce((sum, m) => sum + m.value, 0);
 
@@ -3100,7 +3253,7 @@
                 // Render grouped measurements
                 Object.keys(categories).sort().forEach(category => {
                     const items = categories[category];
-                    const catLinear = items.filter(i => i.measurement.type === 'linear').reduce((sum, i) => sum + i.measurement.value, 0);
+                    const catLinear = items.filter(i => i.measurement.type === 'linear' || i.measurement.type === 'polyline').reduce((sum, i) => sum + i.measurement.value, 0);
                     const catArea = items.filter(i => i.measurement.type === 'area').reduce((sum, i) => sum + i.measurement.value, 0);
                     const catCount = items.filter(i => i.measurement.type === 'count').reduce((sum, i) => sum + i.measurement.value, 0);
 
@@ -3228,6 +3381,7 @@
         
         function enableButtons() {
             document.getElementById('linearBtn').disabled = false;
+            document.getElementById('polylineBtn').disabled = false;
             document.getElementById('areaBtn').disabled = false;
             document.getElementById('countBtn').disabled = false;
             document.getElementById('zoomInBtn').disabled = false;
@@ -3322,7 +3476,12 @@
             switch(key) {
                 case 'escape':
                     e.preventDefault();
-                    if (state.polygonPoints.length > 0) {
+                    if (state.polylinePoints.length > 0) {
+                        // Cancel polyline in progress
+                        state.polylinePoints = [];
+                        state.drawing = false;
+                        draw();
+                    } else if (state.polygonPoints.length > 0) {
                         // Cancel polygon in progress
                         state.polygonPoints = [];
                         state.drawing = false;
@@ -3335,7 +3494,11 @@
                     }
                     break;
                 case 'enter':
-                    if (state.polygonPoints.length >= 3) {
+                    if (state.polylinePoints.length >= 2) {
+                        // Complete polyline
+                        e.preventDefault();
+                        completePolyline();
+                    } else if (state.polygonPoints.length >= 3) {
                         // Complete polygon
                         e.preventDefault();
                         completePolygon();
@@ -3370,6 +3533,12 @@
                     e.preventDefault();
                     if (!document.getElementById('linearBtn').disabled) {
                         setTool('linear');
+                    }
+                    break;
+                case 'p':
+                    e.preventDefault();
+                    if (!document.getElementById('polylineBtn').disabled) {
+                        setTool('polyline');
                     }
                     break;
                 case 'a':
@@ -3431,6 +3600,10 @@
 
         document.getElementById('linearBtn').addEventListener('click', () => {
             setTool('linear');
+        });
+
+        document.getElementById('polylineBtn').addEventListener('click', () => {
+            setTool('polyline');
         });
 
         document.getElementById('areaBtn').addEventListener('click', () => {
