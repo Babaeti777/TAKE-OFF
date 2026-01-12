@@ -1417,6 +1417,11 @@
         function handleDoubleClick(e) {
             if (!state.image) return;
 
+            // Don't trigger edit mode when drawing polygons or polylines
+            if (state.drawing || state.polygonPoints.length > 0 || state.polylinePoints.length > 0) {
+                return;
+            }
+
             const { canvasX, canvasY } = getEventCanvasPosition(e);
 
             // Find if we clicked on a measurement
@@ -2011,6 +2016,10 @@
                     ctx.beginPath();
                     ctx.arc(m.x1, m.y1, pointRadius * (startHovered ? 1.3 : 1), 0, Math.PI * 2);
                     ctx.fill();
+                    // Add dark outline for visibility
+                    ctx.strokeStyle = '#000000';
+                    ctx.lineWidth = (startHovered ? 2.5 : 1.5) / state.scale;
+                    ctx.stroke();
                     if (startHovered && !startActive) {
                         ctx.strokeStyle = CONSTANTS.COLOR_ACTIVE;
                         ctx.lineWidth = 2 / state.scale;
@@ -2024,6 +2033,10 @@
                     ctx.beginPath();
                     ctx.arc(m.x2, m.y2, pointRadius * (endHovered ? 1.3 : 1), 0, Math.PI * 2);
                     ctx.fill();
+                    // Add dark outline for visibility
+                    ctx.strokeStyle = '#000000';
+                    ctx.lineWidth = (endHovered ? 2.5 : 1.5) / state.scale;
+                    ctx.stroke();
                     if (endHovered && !endActive) {
                         ctx.strokeStyle = CONSTANTS.COLOR_ACTIVE;
                         ctx.lineWidth = 2 / state.scale;
@@ -2057,6 +2070,10 @@
                             ctx.beginPath();
                             ctx.arc(point.x, point.y, pointRadius * (isHovered ? 1.3 : 1), 0, Math.PI * 2);
                             ctx.fill();
+                            // Add dark outline for visibility
+                            ctx.strokeStyle = '#000000';
+                            ctx.lineWidth = (isHovered ? 2.5 : 1.5) / state.scale;
+                            ctx.stroke();
                             if (isHovered && !isActive) {
                                 ctx.strokeStyle = CONSTANTS.COLOR_ACTIVE;
                                 ctx.lineWidth = 2 / state.scale;
@@ -2094,6 +2111,10 @@
                             ctx.beginPath();
                             ctx.arc(point.x, point.y, pointRadius * (isHovered ? 1.3 : 1), 0, Math.PI * 2);
                             ctx.fill();
+                            // Add dark outline for visibility
+                            ctx.strokeStyle = '#000000';
+                            ctx.lineWidth = (isHovered ? 2.5 : 1.5) / state.scale;
+                            ctx.stroke();
                             if (isHovered && !isActive) {
                                 ctx.strokeStyle = CONSTANTS.COLOR_ACTIVE;
                                 ctx.lineWidth = 2 / state.scale;
@@ -2160,6 +2181,10 @@
                     ctx.beginPath();
                     ctx.arc(point.x, point.y, pointRadius * (i === state.polylinePoints.length - 1 ? 1.5 : 1), 0, Math.PI * 2);
                     ctx.fill();
+                    // Add dark outline for visibility
+                    ctx.strokeStyle = '#000000';
+                    ctx.lineWidth = 1.5 / state.scale;
+                    ctx.stroke();
                 });
             }
 
@@ -2186,6 +2211,10 @@
                     ctx.beginPath();
                     ctx.arc(point.x, point.y, pointRadius * (i === 0 ? 1.5 : 1), 0, Math.PI * 2);
                     ctx.fill();
+                    // Add dark outline for visibility
+                    ctx.strokeStyle = '#000000';
+                    ctx.lineWidth = 1.5 / state.scale;
+                    ctx.stroke();
                 });
             }
 
@@ -2215,9 +2244,19 @@
                 ctx.beginPath();
                 ctx.arc(state.startPoint.x, state.startPoint.y, CONSTANTS.POINT_RADIUS_NORMAL / state.scale, 0, Math.PI * 2);
                 ctx.fill();
+                // Add dark outline for visibility
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 1.5 / state.scale;
+                ctx.stroke();
+
+                ctx.fillStyle = CONSTANTS.COLOR_LINEAR;
                 ctx.beginPath();
                 ctx.arc(x, y, CONSTANTS.POINT_RADIUS_NORMAL / state.scale, 0, Math.PI * 2);
                 ctx.fill();
+                // Add dark outline for visibility
+                ctx.strokeStyle = '#000000';
+                ctx.lineWidth = 1.5 / state.scale;
+                ctx.stroke();
             } else if (state.tool === 'polyline' && state.polylinePoints.length > 0) {
                 // Show preview line from last point to current mouse position
                 const lastPoint = state.polylinePoints[state.polylinePoints.length - 1];
