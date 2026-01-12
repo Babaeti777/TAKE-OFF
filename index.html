@@ -2046,10 +2046,15 @@
                     ctx.lineWidth = CONSTANTS.LINE_WIDTH / state.scale;
 
                     // Label for linear
-                    ctx.fillStyle = CONSTANTS.COLOR_ACTIVE;
                     ctx.font = `${CONSTANTS.FONT_SIZE / state.scale}px Arial`;
                     const labelX = (m.x1 + m.x2) / 2;
                     const labelY = (m.y1 + m.y2) / 2 - CONSTANTS.LABEL_OFFSET / state.scale;
+                    // Draw dark outline for visibility
+                    ctx.strokeStyle = '#000000';
+                    ctx.lineWidth = 3 / state.scale;
+                    ctx.strokeText(m.label, labelX, labelY);
+                    // Draw text
+                    ctx.fillStyle = CONSTANTS.COLOR_ACTIVE;
                     ctx.fillText(m.label, labelX, labelY);
                 } else if (m.type === 'polyline' && m.points) {
                     // Continuous linear (polyline)
@@ -2086,8 +2091,13 @@
                         // Label at midpoint of first and last point
                         const labelX = (m.points[0].x + m.points[m.points.length - 1].x) / 2;
                         const labelY = (m.points[0].y + m.points[m.points.length - 1].y) / 2 - CONSTANTS.LABEL_OFFSET / state.scale;
-                        ctx.fillStyle = CONSTANTS.COLOR_ACTIVE;
                         ctx.font = `${CONSTANTS.FONT_SIZE / state.scale}px Arial`;
+                        // Draw dark outline for visibility
+                        ctx.strokeStyle = '#000000';
+                        ctx.lineWidth = 3 / state.scale;
+                        ctx.strokeText(m.label, labelX, labelY);
+                        // Draw text
+                        ctx.fillStyle = CONSTANTS.COLOR_ACTIVE;
                         ctx.fillText(m.label, labelX, labelY);
                     }
                 } else if (m.points) {
@@ -2133,8 +2143,13 @@
                         centroidX /= m.points.length;
                         centroidY /= m.points.length;
 
-                        ctx.fillStyle = CONSTANTS.COLOR_ACTIVE;
                         ctx.font = `${CONSTANTS.FONT_SIZE / state.scale}px Arial`;
+                        // Draw dark outline for visibility
+                        ctx.strokeStyle = '#000000';
+                        ctx.lineWidth = 3 / state.scale;
+                        ctx.strokeText(m.label, centroidX, centroidY);
+                        // Draw text
+                        ctx.fillStyle = CONSTANTS.COLOR_ACTIVE;
                         ctx.fillText(m.label, centroidX, centroidY);
                     }
                 } else {
@@ -2151,10 +2166,15 @@
                     ctx.arc(m.x2, m.y2, pointRadius, 0, Math.PI * 2);
                     ctx.fill();
 
-                    ctx.fillStyle = CONSTANTS.COLOR_ACTIVE;
                     ctx.font = `${CONSTANTS.FONT_SIZE / state.scale}px Arial`;
                     const labelX = (m.x1 + m.x2) / 2;
                     const labelY = (m.y1 + m.y2) / 2 - CONSTANTS.LABEL_OFFSET / state.scale;
+                    // Draw dark outline for visibility
+                    ctx.strokeStyle = '#000000';
+                    ctx.lineWidth = 3 / state.scale;
+                    ctx.strokeText(m.label, labelX, labelY);
+                    // Draw text
+                    ctx.fillStyle = CONSTANTS.COLOR_ACTIVE;
                     ctx.fillText(m.label, labelX, labelY);
                 }
             });
