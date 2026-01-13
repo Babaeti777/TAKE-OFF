@@ -745,6 +745,15 @@
                         📤 Upload
                     </button>
 
+                    <div class="tool-group" style="border: 2px solid var(--border-color); border-radius: 4px;">
+                        <button class="btn-secondary active" id="takeoffModeBtn" aria-label="Takeoff Mode (T)" title="Takeoff Mode - Measurement tools active (T)">
+                            📐 Takeoff
+                        </button>
+                        <button class="btn-secondary" id="readerModeBtn" aria-label="Reader Mode (R)" title="Reader Mode - View only (R)">
+                            👁️ Reader
+                        </button>
+                    </div>
+
                     <div class="tool-group">
                         <button class="btn-secondary" id="panBtn" aria-label="Pan tool (M)" title="Pan (M)">
                             ✋
@@ -986,7 +995,8 @@
             scrollTimeout: null,            // Phase 4: Timeout for scroll debouncing
             zoomTimeout: null,              // Phase 4: Timeout for zoom quality upgrade
             hoveredMeasurement: null,       // Phase 4: Currently hovered measurement index
-            hoveredHandle: null             // Phase 4: Currently hovered handle
+            hoveredHandle: null,            // Phase 4: Currently hovered handle
+            mode: 'takeoff'                 // Current mode: 'reader' or 'takeoff'
         };
 
         // Undo/Redo state
@@ -1160,8 +1170,9 @@
         function fitToScreen() {
             if (!state.image) return;
 
-            const canvasWidth = canvas.width - 100;
-            const canvasHeight = canvas.height - 100;
+            const padding = 50; // Padding around the image
+            const canvasWidth = canvas.width - (padding * 2);
+            const canvasHeight = canvas.height - (padding * 2);
             const imageWidth = state.image.width;
             const imageHeight = state.image.height;
 
@@ -1169,8 +1180,14 @@
             const scaleY = canvasHeight / imageHeight;
             const newScale = Math.min(scaleX, scaleY);
 
+            // Calculate centered position
+            const scaledWidth = imageWidth * newScale;
+            const scaledHeight = imageHeight * newScale;
+            const offsetX = (canvas.width - scaledWidth) / 2;
+            const offsetY = (canvas.height - scaledHeight) / 2;
+
             state.scale = newScale;
-            state.offset = { x: 50, y: 50 };
+            state.offset = { x: offsetX, y: offsetY };
 
             updateUI();
             draw();
@@ -3178,6 +3195,73 @@
             draw();
         }
 
+        // App mode switching (Reader vs Takeoff)
+        function setAppMode(mode) {
+            state.mode = mode;
+            const takeoffModeBtn = document.getElementById('takeoffModeBtn');
+            const readerModeBtn = document.getElementById('readerModeBtn');
+
+            // Tool buttons to disable/enable
+            const toolButtons = [
+                'linearBtn', 'polylineBtn', 'areaBtn', 'countBtn',
+                'calibrateBtn', 'editBtn', 'clearBtn'
+            ];
+
+            if (mode === 'reader') {
+                // Reader mode - disable all measurement tools
+                readerModeBtn.classList.add('active');
+                takeoffModeBtn.classList.remove('active');
+
+                // Disable measurement tools
+                toolButtons.forEach(btnId => {
+                    const btn = document.getElementById(btnId);
+                    if (btn) btn.disabled = true;
+                });
+
+                // Switch to pan/move tool
+                if (state.tool !== 'move') {
+                    setTool('move');
+                }
+
+                // Exit edit mode if active
+                if (state.editMode) {
+                    toggleEditMode();
+                }
+
+                // Hide measurements
+                document.getElementById('measurementList').style.opacity = '0.3';
+
+                showToast('👁️ Reader mode - View only', 'info');
+            } else {
+                // Takeoff mode - enable measurement tools
+                takeoffModeBtn.classList.add('active');
+                readerModeBtn.classList.remove('active');
+
+                // Enable measurement tools only if image is loaded
+                if (state.image) {
+                    toolButtons.forEach(btnId => {
+                        const btn = document.getElementById(btnId);
+                        if (btn && btnId !== 'editBtn' && btnId !== 'clearBtn') {
+                            btn.disabled = false;
+                        }
+                    });
+
+                    // Enable edit/clear only if there are measurements
+                    if (state.measurements.length > 0) {
+                        document.getElementById('editBtn').disabled = false;
+                        document.getElementById('clearBtn').disabled = false;
+                    }
+                }
+
+                // Show measurements
+                document.getElementById('measurementList').style.opacity = '1';
+
+                showToast('📐 Takeoff mode - Measurement tools active', 'success');
+            }
+
+            draw();
+        }
+
         // Enhanced zoom with better quality
         async function zoomEnhanced(factor) {
             const oldScale = state.scale;
@@ -3563,6 +3647,16 @@
             const key = e.key.toLowerCase();
 
             switch(key) {
+                case 't':
+                    // Toggle to Takeoff mode
+                    e.preventDefault();
+                    setAppMode('takeoff');
+                    break;
+                case 'r':
+                    // Toggle to Reader mode
+                    e.preventDefault();
+                    setAppMode('reader');
+                    break;
                 case 'escape':
                     e.preventDefault();
                     if (state.polylinePoints.length > 0) {
@@ -3620,44 +3714,44 @@
                     break;
                 case 'l':
                     e.preventDefault();
-                    if (!document.getElementById('linearBtn').disabled) {
+                    if (state.mode === 'takeoff' && !document.getElementById('linearBtn').disabled) {
                         setTool('linear');
                     }
                     break;
                 case 'p':
                     e.preventDefault();
-                    if (!document.getElementById('polylineBtn').disabled) {
+                    if (state.mode === 'takeoff' && !document.getElementById('polylineBtn').disabled) {
                         setTool('polyline');
                     }
                     break;
                 case 'a':
                     e.preventDefault();
-                    if (!document.getElementById('areaBtn').disabled) {
+                    if (state.mode === 'takeoff' && !document.getElementById('areaBtn').disabled) {
                         setTool('area');
                     }
                     break;
                 case 'q':
                     e.preventDefault();
-                    if (!document.getElementById('countBtn').disabled) {
+                    if (state.mode === 'takeoff' && !document.getElementById('countBtn').disabled) {
                         setTool('count');
                     }
                     break;
                 case 'e':
                     e.preventDefault();
-                    if (!document.getElementById('editBtn').disabled) {
+                    if (state.mode === 'takeoff' && !document.getElementById('editBtn').disabled) {
                         toggleEditMode();
                     }
                     break;
                 case 's':
-                    // Only trigger calibrate if Ctrl is not pressed (Ctrl+S is handled above)
-                    if (!e.ctrlKey && !e.metaKey && !document.getElementById('calibrateBtn').disabled) {
+                    // Only trigger calibrate if Ctrl is not pressed (Ctrl+S is handled above) and in takeoff mode
+                    if (!e.ctrlKey && !e.metaKey && state.mode === 'takeoff' && !document.getElementById('calibrateBtn').disabled) {
                         e.preventDefault();
                         calibrateScale();
                     }
                     break;
                 case 'c':
                     e.preventDefault();
-                    if (!document.getElementById('clearBtn').disabled) {
+                    if (state.mode === 'takeoff' && !document.getElementById('clearBtn').disabled) {
                         clearAll();
                     }
                     break;
@@ -3732,6 +3826,10 @@
         document.getElementById('bulkColorBtn').addEventListener('click', bulkChangeColor);
         document.getElementById('bulkCategoryBtn').addEventListener('click', bulkChangeCategory);
         document.getElementById('bulkDeselectBtn').addEventListener('click', deselectAllMeasurements);
+
+        // App mode toggle
+        document.getElementById('takeoffModeBtn').addEventListener('click', () => setAppMode('takeoff'));
+        document.getElementById('readerModeBtn').addEventListener('click', () => setAppMode('reader'));
 
         // Phase 4: Thumbnail panel and view mode
         document.getElementById('thumbnailToggle').addEventListener('click', toggleThumbnailPanel);
