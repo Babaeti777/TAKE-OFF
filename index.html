@@ -977,6 +977,8 @@
             lastZoomLevel: 1,               // Last zoom level for PDF re-rendering
             imageWidth: 0,                  // Current image width for scaling measurements
             imageHeight: 0,                 // Current image height for scaling measurements
+            baseImageWidth: 0,              // Base image width for measurement reference
+            baseImageHeight: 0,             // Base image height for measurement reference
             projectName: '',                // Project name
             hasUnsavedChanges: false,       // Track unsaved changes
             lastSavedState: null,           // Last saved state for comparison
@@ -1310,9 +1312,27 @@
                     const newWidth = img.width;
                     const newHeight = img.height;
 
-                    // Scale existing measurements if image size changed
-                    if (pageNumber === state.currentPage && state.measurements.length > 0) {
-                        scaleMeasurements(oldWidth, oldHeight, newWidth, newHeight);
+                    // Set base dimensions on first render or page change
+                    if (state.baseImageWidth === 0 || state.baseImageHeight === 0 || pageNumber !== state.currentPage) {
+                        state.baseImageWidth = newWidth;
+                        state.baseImageHeight = newHeight;
+                    } else {
+                        // Scale measurements from base dimensions when quality changes
+                        // This prevents cumulative scaling drift
+                        if (state.measurements.length > 0 && pageNumber === state.currentPage) {
+                            const baseWidth = state.baseImageWidth;
+                            const baseHeight = state.baseImageHeight;
+
+                            // Only scale if dimensions actually changed from base
+                            if (baseWidth !== newWidth || baseHeight !== newHeight) {
+                                // First, scale back to base if needed
+                                if (oldWidth !== baseWidth || oldHeight !== baseHeight) {
+                                    scaleMeasurements(oldWidth, oldHeight, baseWidth, baseHeight);
+                                }
+                                // Then scale to new size
+                                scaleMeasurements(baseWidth, baseHeight, newWidth, newHeight);
+                            }
+                        }
                     }
 
                     state.image = img;
@@ -2586,6 +2606,8 @@
                     measurements: state.measurements,
                     currentPage: state.currentPage,
                     totalPages: state.totalPages,
+                    baseImageWidth: state.baseImageWidth,   // Save base reference dimensions
+                    baseImageHeight: state.baseImageHeight, // Save base reference dimensions
                     // Note: We don't save the actual image/PDF, just the measurements
                     metadata: {
                         measurementCount: state.measurements.length,
@@ -2660,6 +2682,20 @@
                         category: m.category || '',
                         description: m.description || ''
                     }));
+
+                    // Scale measurements if image dimensions changed
+                    if (state.image && projectData.baseImageWidth && projectData.baseImageHeight) {
+                        const savedBaseWidth = projectData.baseImageWidth;
+                        const savedBaseHeight = projectData.baseImageHeight;
+                        const currentBaseWidth = state.baseImageWidth;
+                        const currentBaseHeight = state.baseImageHeight;
+
+                        // Only scale if base dimensions are different
+                        if (savedBaseWidth !== currentBaseWidth || savedBaseHeight !== currentBaseHeight) {
+                            scaleMeasurements(savedBaseWidth, savedBaseHeight, currentBaseWidth, currentBaseHeight);
+                            showToast('📏 Measurements scaled to current drawing size', 'info');
+                        }
+                    }
 
                     // Clear history and save new state
                     history.states = [];
