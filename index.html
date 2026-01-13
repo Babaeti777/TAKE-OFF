@@ -573,21 +573,21 @@
         .thumbnail-panel.collapsed {
             width: 0;
             min-width: 0;
-            overflow: hidden;
+            overflow: visible; /* Changed from hidden to visible */
         }
 
         .thumbnail-toggle {
             position: absolute;
-            right: 0;
+            right: -1px; /* Align with panel edge */
             top: 50%;
-            transform: translateY(-50%);
+            transform: translateY(-50%) translateX(100%); /* Move completely outside */
             background: var(--bg-secondary);
             border: 1px solid var(--border-color);
-            border-right: none;
+            border-left: none; /* Remove left border when it's on the right */
             padding: 1rem 0.5rem;
             cursor: pointer;
             z-index: 100;
-            border-radius: 4px 0 0 4px;
+            border-radius: 0 4px 4px 0; /* Rounded on right side */
             transition: all 0.3s;
             color: var(--text-primary);
             font-size: 1rem;
@@ -708,12 +708,6 @@
         }
 
         /* Adjust main-content for thumbnail panel */
-        .main-content {
-            display: flex;
-            flex: 1;
-            overflow: hidden;
-        }
-
         /* ==================== END PHASE 4 STYLES ==================== */
     </style>
 </head>
