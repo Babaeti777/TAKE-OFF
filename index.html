@@ -709,6 +709,155 @@
 
         /* Adjust main-content for thumbnail panel */
         /* ==================== END PHASE 4 STYLES ==================== */
+
+        /* Settings Modal */
+        .settings-modal {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+
+        .settings-modal.show {
+            display: flex;
+        }
+
+        .settings-content {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            width: 90%;
+            max-width: 700px;
+            max-height: 85vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .settings-header {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .settings-header h2 {
+            margin: 0;
+            font-size: 1.25rem;
+            color: var(--text-primary);
+        }
+
+        .settings-close {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .settings-close:hover {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+        }
+
+        .settings-body {
+            padding: 1.5rem;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .shortcut-section {
+            margin-bottom: 1.75rem;
+        }
+
+        .shortcut-section:last-child {
+            margin-bottom: 0;
+        }
+
+        .shortcut-section h3 {
+            margin: 0 0 0.75rem 0;
+            font-size: 1rem;
+            color: var(--text-primary);
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.5rem;
+        }
+
+        .shortcut-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .shortcut-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.625rem 0.875rem;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        .shortcut-item:hover {
+            background: var(--bg-primary);
+        }
+
+        .shortcut-label {
+            color: var(--text-primary);
+            font-size: 0.875rem;
+        }
+
+        .shortcut-key {
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            padding: 0.375rem 0.75rem;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.875rem;
+            font-weight: bold;
+            border: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: all 0.2s;
+            min-width: 50px;
+            text-align: center;
+        }
+
+        .shortcut-key:hover {
+            background: var(--btn-primary);
+            color: white;
+            border-color: var(--btn-primary);
+        }
+
+        .shortcut-key.editing {
+            background: var(--btn-primary);
+            color: white;
+            border-color: var(--btn-primary);
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.6; }
+        }
+
+        .settings-footer {
+            padding: 1rem 1.5rem;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.75rem;
+        }
     </style>
 </head>
 <body>
@@ -819,6 +968,10 @@
                         <button id="darkThemeBtn" class="active" aria-label="Dark theme" aria-checked="true">🌙 Dark</button>
                         <button id="lightThemeBtn" aria-label="Light theme" aria-checked="false">☀️ Light</button>
                     </div>
+
+                    <button class="btn-secondary" id="settingsBtn" aria-label="Settings" title="Settings (Keyboard Shortcuts)">
+                        ⚙️ Settings
+                    </button>
                 </div>
             </div>
             <div class="edit-mode-indicator" id="editIndicator">
@@ -866,7 +1019,49 @@
                     <div class="spinner"></div>
                     <p id="loadingText">Loading PDF...</p>
                 </div>
-                
+
+                <!-- Settings Modal -->
+                <div class="settings-modal" id="settingsModal">
+                    <div class="settings-content">
+                        <div class="settings-header">
+                            <h2>⚙️ Settings - Keyboard Shortcuts</h2>
+                            <button class="settings-close" id="settingsClose" aria-label="Close settings">✕</button>
+                        </div>
+                        <div class="settings-body">
+                            <p style="margin-bottom: 1rem; color: var(--text-secondary);">Click on a shortcut to change it, then press the desired key.</p>
+
+                            <div class="shortcut-section">
+                                <h3>Mode Switching</h3>
+                                <div class="shortcut-list" id="modeSwitchingShortcuts"></div>
+                            </div>
+
+                            <div class="shortcut-section">
+                                <h3>Measurement Tools (Takeoff Mode)</h3>
+                                <div class="shortcut-list" id="measurementToolsShortcuts"></div>
+                            </div>
+
+                            <div class="shortcut-section">
+                                <h3>Actions</h3>
+                                <div class="shortcut-list" id="actionsShortcuts"></div>
+                            </div>
+
+                            <div class="shortcut-section">
+                                <h3>Zoom & Navigation</h3>
+                                <div class="shortcut-list" id="zoomShortcuts"></div>
+                            </div>
+
+                            <div class="shortcut-section">
+                                <h3>System</h3>
+                                <div class="shortcut-list" id="systemShortcuts"></div>
+                            </div>
+                        </div>
+                        <div class="settings-footer">
+                            <button class="btn-danger" id="resetShortcutsBtn">Reset to Defaults</button>
+                            <button class="btn-success" id="saveShortcutsBtn">Save</button>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="pdf-controls" id="pdfControls">
                     <button class="btn-secondary" id="pdfPrevBtn" aria-label="Previous page">◀</button>
                     <span style="margin: 0 0.5rem;">Page </span>
@@ -954,6 +1149,38 @@
             COLOR_ACTIVE: '#ffffff',        // Color for active/selected points
             COUNT_MARKER_SIZE: 8            // Size of count markers
         };
+
+        // Default Keyboard Shortcuts Configuration
+        const DEFAULT_SHORTCUTS = {
+            modeSwitching: [
+                { id: 'takeoff-mode', label: 'Switch to Takeoff Mode', key: 't', action: 'takeoffMode' },
+                { id: 'reader-mode', label: 'Switch to Reader Mode', key: 'r', action: 'readerMode' }
+            ],
+            measurementTools: [
+                { id: 'linear-tool', label: 'Linear Measurement', key: 'l', action: 'linearTool' },
+                { id: 'polyline-tool', label: 'Polyline (Continuous Linear)', key: 'p', action: 'polylineTool' },
+                { id: 'area-tool', label: 'Area Measurement (Polygon)', key: 'a', action: 'areaTool' },
+                { id: 'count-tool', label: 'Count Tool', key: 'c', action: 'countTool' }
+            ],
+            actions: [
+                { id: 'edit-mode', label: 'Toggle Edit Mode', key: 'e', action: 'editMode' },
+                { id: 'delete-item', label: 'Delete Selected/All', key: 'Delete', action: 'delete' },
+                { id: 'escape', label: 'Cancel/Deselect', key: 'Escape', action: 'escape' },
+                { id: 'enter-complete', label: 'Complete Polyline/Polygon', key: 'Enter', action: 'complete' }
+            ],
+            zoom: [
+                { id: 'zoom-in', label: 'Zoom In', key: '=', action: 'zoomIn' },
+                { id: 'zoom-out', label: 'Zoom Out', key: '-', action: 'zoomOut' },
+                { id: 'fit-screen', label: 'Fit to Screen', key: '0', action: 'fitScreen' }
+            ],
+            system: [
+                { id: 'save-project', label: 'Save Project', key: 's', action: 'saveProject', ctrl: true },
+                { id: 'load-project', label: 'Load Project', key: 'o', action: 'loadProject', ctrl: true }
+            ]
+        };
+
+        // Current shortcuts (loaded from localStorage or defaults)
+        let shortcuts = JSON.parse(JSON.stringify(DEFAULT_SHORTCUTS)); // Deep copy
 
         // State
         let state = {
@@ -3262,6 +3489,317 @@
             draw();
         }
 
+        // Settings Modal Functions
+        function loadShortcutsFromStorage() {
+            const saved = localStorage.getItem('takeoff-shortcuts');
+            if (saved) {
+                try {
+                    shortcuts = JSON.parse(saved);
+                } catch (e) {
+                    console.error('Failed to load shortcuts:', e);
+                    shortcuts = JSON.parse(JSON.stringify(DEFAULT_SHORTCUTS));
+                }
+            }
+        }
+
+        function saveShortcutsToStorage() {
+            localStorage.setItem('takeoff-shortcuts', JSON.stringify(shortcuts));
+        }
+
+        function resetShortcuts() {
+            shortcuts = JSON.parse(JSON.stringify(DEFAULT_SHORTCUTS));
+            saveShortcutsToStorage();
+            populateShortcutLists();
+            showToast('⚙️ Shortcuts reset to defaults', 'success');
+        }
+
+        function getKeyDisplayName(key, ctrl = false) {
+            const keyMap = {
+                ' ': 'Space',
+                'Escape': 'Esc',
+                'Delete': 'Del',
+                'Enter': '↵',
+                '=': '+ / =',
+                '-': '- / _'
+            };
+
+            const displayKey = keyMap[key] || key.toUpperCase();
+            return ctrl ? `Ctrl+${displayKey}` : displayKey;
+        }
+
+        function populateShortcutLists() {
+            // Mode Switching
+            const modeSwitchingContainer = document.getElementById('modeSwitchingShortcuts');
+            modeSwitchingContainer.innerHTML = '';
+            shortcuts.modeSwitching.forEach(shortcut => {
+                const item = createShortcutItem(shortcut);
+                modeSwitchingContainer.appendChild(item);
+            });
+
+            // Measurement Tools
+            const measurementToolsContainer = document.getElementById('measurementToolsShortcuts');
+            measurementToolsContainer.innerHTML = '';
+            shortcuts.measurementTools.forEach(shortcut => {
+                const item = createShortcutItem(shortcut);
+                measurementToolsContainer.appendChild(item);
+            });
+
+            // Actions
+            const actionsContainer = document.getElementById('actionsShortcuts');
+            actionsContainer.innerHTML = '';
+            shortcuts.actions.forEach(shortcut => {
+                const item = createShortcutItem(shortcut);
+                actionsContainer.appendChild(item);
+            });
+
+            // Zoom & Navigation
+            const zoomContainer = document.getElementById('zoomShortcuts');
+            zoomContainer.innerHTML = '';
+            shortcuts.zoom.forEach(shortcut => {
+                const item = createShortcutItem(shortcut);
+                zoomContainer.appendChild(item);
+            });
+
+            // System
+            const systemContainer = document.getElementById('systemShortcuts');
+            systemContainer.innerHTML = '';
+            shortcuts.system.forEach(shortcut => {
+                const item = createShortcutItem(shortcut);
+                systemContainer.appendChild(item);
+            });
+        }
+
+        function createShortcutItem(shortcut) {
+            const item = document.createElement('div');
+            item.className = 'shortcut-item';
+
+            const label = document.createElement('span');
+            label.className = 'shortcut-label';
+            label.textContent = shortcut.label;
+
+            const keyBtn = document.createElement('button');
+            keyBtn.className = 'shortcut-key';
+            keyBtn.textContent = getKeyDisplayName(shortcut.key, shortcut.ctrl);
+            keyBtn.dataset.shortcutId = shortcut.id;
+            keyBtn.dataset.action = shortcut.action;
+
+            keyBtn.addEventListener('click', () => {
+                startEditingShortcut(keyBtn, shortcut);
+            });
+
+            item.appendChild(label);
+            item.appendChild(keyBtn);
+
+            return item;
+        }
+
+        let editingShortcut = null;
+        let editingButton = null;
+
+        function startEditingShortcut(button, shortcut) {
+            // Cancel any existing edit
+            if (editingButton) {
+                editingButton.classList.remove('editing');
+            }
+
+            editingButton = button;
+            editingShortcut = shortcut;
+            button.classList.add('editing');
+            button.textContent = 'Press key...';
+
+            // Add one-time keydown listener
+            const keyHandler = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+
+                // Ignore modifier keys alone
+                if (['Control', 'Shift', 'Alt', 'Meta'].includes(e.key)) {
+                    return;
+                }
+
+                // Check for conflicts
+                const newKey = e.key;
+                const hasCtrl = e.ctrlKey || e.metaKey;
+
+                if (checkShortcutConflict(shortcut.id, newKey, hasCtrl)) {
+                    button.classList.remove('editing');
+                    button.textContent = getKeyDisplayName(shortcut.key, shortcut.ctrl);
+                    showToast('⚠️ Shortcut already in use', 'error');
+                    document.removeEventListener('keydown', keyHandler, true);
+                    editingShortcut = null;
+                    editingButton = null;
+                    return;
+                }
+
+                // Update the shortcut
+                shortcut.key = newKey;
+                shortcut.ctrl = hasCtrl;
+
+                button.classList.remove('editing');
+                button.textContent = getKeyDisplayName(newKey, hasCtrl);
+
+                document.removeEventListener('keydown', keyHandler, true);
+                editingShortcut = null;
+                editingButton = null;
+
+                showToast('✓ Shortcut updated', 'success');
+            };
+
+            document.addEventListener('keydown', keyHandler, true);
+        }
+
+        function checkShortcutConflict(currentId, key, ctrl = false) {
+            // Check all shortcut categories
+            for (const category of Object.values(shortcuts)) {
+                for (const shortcut of category) {
+                    if (shortcut.id !== currentId &&
+                        shortcut.key === key &&
+                        (shortcut.ctrl || false) === ctrl) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function openSettingsModal() {
+            populateShortcutLists();
+            document.getElementById('settingsModal').classList.add('show');
+        }
+
+        function closeSettingsModal() {
+            document.getElementById('settingsModal').classList.remove('show');
+            // Cancel any ongoing edit
+            if (editingButton) {
+                editingButton.classList.remove('editing');
+                editingButton.textContent = getKeyDisplayName(editingShortcut.key, editingShortcut.ctrl);
+                editingButton = null;
+                editingShortcut = null;
+            }
+        }
+
+        function saveSettings() {
+            saveShortcutsToStorage();
+            closeSettingsModal();
+            showToast('⚙️ Settings saved', 'success');
+        }
+
+        // Helper function to find shortcut by key
+        function findShortcutByKey(key, hasCtrl = false) {
+            for (const category of Object.values(shortcuts)) {
+                for (const shortcut of category) {
+                    if (shortcut.key === key && (shortcut.ctrl || false) === hasCtrl) {
+                        return shortcut;
+                    }
+                }
+            }
+            return null;
+        }
+
+        // Helper function to execute shortcut action
+        function executeShortcutAction(action) {
+            const actionMap = {
+                // Mode switching
+                'takeoffMode': () => setAppMode('takeoff'),
+                'readerMode': () => setAppMode('reader'),
+
+                // Measurement tools
+                'linearTool': () => {
+                    if (state.mode === 'takeoff' && !document.getElementById('linearBtn').disabled) {
+                        setTool('linear');
+                    }
+                },
+                'polylineTool': () => {
+                    if (state.mode === 'takeoff' && !document.getElementById('polylineBtn').disabled) {
+                        setTool('polyline');
+                    }
+                },
+                'areaTool': () => {
+                    if (state.mode === 'takeoff' && !document.getElementById('areaBtn').disabled) {
+                        setTool('area');
+                    }
+                },
+                'countTool': () => {
+                    if (state.mode === 'takeoff' && !document.getElementById('countBtn').disabled) {
+                        setTool('count');
+                    }
+                },
+
+                // Actions
+                'editMode': () => {
+                    if (state.mode === 'takeoff' && !document.getElementById('editBtn').disabled) {
+                        toggleEditMode();
+                    }
+                },
+                'delete': () => {
+                    if (state.selectedMeasurements.size > 0) {
+                        bulkDelete();
+                    } else if (state.editMode && state.activeMeasurement !== null) {
+                        if (confirm('Delete this measurement?')) {
+                            deleteMeasurement(state.activeMeasurement);
+                            state.activeMeasurement = null;
+                            state.activeHandle = null;
+                            state.editingHandle = false;
+                        }
+                    } else if (state.measurements.length > 0) {
+                        if (confirm('Delete last measurement?')) {
+                            deleteMeasurement(state.measurements.length - 1);
+                        }
+                    }
+                },
+                'escape': () => {
+                    if (state.polylinePoints.length > 0) {
+                        state.polylinePoints = [];
+                        state.drawing = false;
+                        draw();
+                    } else if (state.polygonPoints.length > 0) {
+                        state.polygonPoints = [];
+                        state.drawing = false;
+                        draw();
+                    } else if (state.selectedMeasurements.size > 0) {
+                        deselectAllMeasurements();
+                    } else if (state.editMode) {
+                        toggleEditMode();
+                    }
+                },
+                'complete': () => {
+                    if (state.polylinePoints.length >= 2) {
+                        completePolyline();
+                    } else if (state.polygonPoints.length >= 3) {
+                        completePolygon();
+                    }
+                },
+
+                // Zoom
+                'zoomIn': () => {
+                    if (!document.getElementById('zoomInBtn').disabled) {
+                        zoomEnhanced(CONSTANTS.ZOOM_IN_FACTOR);
+                    }
+                },
+                'zoomOut': () => {
+                    if (!document.getElementById('zoomOutBtn').disabled) {
+                        zoomEnhanced(CONSTANTS.ZOOM_OUT_FACTOR);
+                    }
+                },
+                'fitScreen': () => fitToScreen(),
+
+                // System
+                'saveProject': () => {
+                    if (!document.getElementById('saveProjectBtn').disabled) {
+                        saveProject();
+                    }
+                },
+                'loadProject': () => loadProject()
+            };
+
+            const actionFn = actionMap[action];
+            if (actionFn) {
+                actionFn();
+                return true;
+            }
+            return false;
+        }
+
         // Enhanced zoom with better quality
         async function zoomEnhanced(factor) {
             const oldScale = state.scale;
@@ -3602,22 +4140,6 @@
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
-            // Ctrl+S (Save) - works everywhere
-            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-                e.preventDefault();
-                if (!document.getElementById('saveProjectBtn').disabled) {
-                    saveProject();
-                }
-                return;
-            }
-
-            // Ctrl+O (Open/Load) - works everywhere
-            if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o') {
-                e.preventDefault();
-                loadProject();
-                return;
-            }
-
             // Ctrl+Z (Undo) and Ctrl+Y (Redo) work even in input fields
             if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
                 e.preventDefault();
@@ -3644,130 +4166,52 @@
                 return;
             }
 
+            // Check for custom shortcuts
+            const hasCtrl = e.ctrlKey || e.metaKey;
+            const shortcut = findShortcutByKey(e.key, hasCtrl);
+
+            if (shortcut) {
+                e.preventDefault();
+                executeShortcutAction(shortcut.action);
+                return;
+            }
+
+            // Fallback for old hardcoded shortcuts not in configuration
             const key = e.key.toLowerCase();
 
             switch(key) {
-                case 't':
-                    // Toggle to Takeoff mode
-                    e.preventDefault();
-                    setAppMode('takeoff');
-                    break;
-                case 'r':
-                    // Toggle to Reader mode
-                    e.preventDefault();
-                    setAppMode('reader');
-                    break;
-                case 'escape':
-                    e.preventDefault();
-                    if (state.polylinePoints.length > 0) {
-                        // Cancel polyline in progress
-                        state.polylinePoints = [];
-                        state.drawing = false;
-                        draw();
-                    } else if (state.polygonPoints.length > 0) {
-                        // Cancel polygon in progress
-                        state.polygonPoints = [];
-                        state.drawing = false;
-                        draw();
-                    } else if (state.selectedMeasurements.size > 0) {
-                        // Phase 2: Deselect all measurements
-                        deselectAllMeasurements();
-                    } else if (state.editMode) {
-                        toggleEditMode();
-                    }
-                    break;
-                case 'enter':
-                    if (state.polylinePoints.length >= 2) {
-                        // Complete polyline
-                        e.preventDefault();
-                        completePolyline();
-                    } else if (state.polygonPoints.length >= 3) {
-                        // Complete polygon
-                        e.preventDefault();
-                        completePolygon();
-                    }
-                    break;
-                case 'delete':
-                case 'backspace':
-                    e.preventDefault(); // Prevent browser back navigation
-                    if (state.selectedMeasurements.size > 0) {
-                        // Delete selected measurements
-                        bulkDelete();
-                    } else if (state.editMode && state.activeMeasurement !== null) {
-                        // Delete active measurement in edit mode
-                        if (confirm('Delete this measurement?')) {
-                            deleteMeasurement(state.activeMeasurement);
-                            state.activeMeasurement = null;
-                            state.activeHandle = null;
-                            state.editingHandle = false;
-                        }
-                    } else if (state.measurements.length > 0) {
-                        // Delete last measurement as fallback
-                        if (confirm('Delete last measurement?')) {
-                            deleteMeasurement(state.measurements.length - 1);
-                        }
-                    }
-                    break;
                 case 'm':
                     e.preventDefault();
                     setTool('move');
                     break;
-                case 'l':
-                    e.preventDefault();
-                    if (state.mode === 'takeoff' && !document.getElementById('linearBtn').disabled) {
-                        setTool('linear');
-                    }
-                    break;
-                case 'p':
-                    e.preventDefault();
-                    if (state.mode === 'takeoff' && !document.getElementById('polylineBtn').disabled) {
-                        setTool('polyline');
-                    }
-                    break;
-                case 'a':
-                    e.preventDefault();
-                    if (state.mode === 'takeoff' && !document.getElementById('areaBtn').disabled) {
-                        setTool('area');
-                    }
-                    break;
                 case 'q':
+                    // Fallback for old count tool shortcut (now 'c' by default)
                     e.preventDefault();
                     if (state.mode === 'takeoff' && !document.getElementById('countBtn').disabled) {
                         setTool('count');
                     }
                     break;
-                case 'e':
-                    e.preventDefault();
-                    if (state.mode === 'takeoff' && !document.getElementById('editBtn').disabled) {
-                        toggleEditMode();
-                    }
-                    break;
                 case 's':
-                    // Only trigger calibrate if Ctrl is not pressed (Ctrl+S is handled above) and in takeoff mode
-                    if (!e.ctrlKey && !e.metaKey && state.mode === 'takeoff' && !document.getElementById('calibrateBtn').disabled) {
+                    // Only trigger calibrate if Ctrl is not pressed and in takeoff mode
+                    if (!hasCtrl && state.mode === 'takeoff' && !document.getElementById('calibrateBtn').disabled) {
                         e.preventDefault();
                         calibrateScale();
                     }
                     break;
-                case 'c':
+                case 'backspace':
+                    // Also handle backspace as delete
                     e.preventDefault();
-                    if (state.mode === 'takeoff' && !document.getElementById('clearBtn').disabled) {
-                        clearAll();
-                    }
+                    executeShortcutAction('delete');
                     break;
                 case '+':
-                case '=':
+                    // Handle + as zoom in (= is already handled by shortcuts)
                     e.preventDefault();
-                    if (!document.getElementById('zoomInBtn').disabled) {
-                        zoomEnhanced(CONSTANTS.ZOOM_IN_FACTOR);
-                    }
+                    executeShortcutAction('zoomIn');
                     break;
-                case '-':
                 case '_':
+                    // Handle _ as zoom out (- is already handled by shortcuts)
                     e.preventDefault();
-                    if (!document.getElementById('zoomOutBtn').disabled) {
-                        zoomEnhanced(CONSTANTS.ZOOM_OUT_FACTOR);
-                    }
+                    executeShortcutAction('zoomOut');
                     break;
             }
         });
@@ -3831,6 +4275,19 @@
         document.getElementById('takeoffModeBtn').addEventListener('click', () => setAppMode('takeoff'));
         document.getElementById('readerModeBtn').addEventListener('click', () => setAppMode('reader'));
 
+        // Settings modal
+        document.getElementById('settingsBtn').addEventListener('click', openSettingsModal);
+        document.getElementById('settingsClose').addEventListener('click', closeSettingsModal);
+        document.getElementById('resetShortcutsBtn').addEventListener('click', resetShortcuts);
+        document.getElementById('saveShortcutsBtn').addEventListener('click', saveSettings);
+
+        // Close settings modal when clicking outside
+        document.getElementById('settingsModal').addEventListener('click', (e) => {
+            if (e.target.id === 'settingsModal') {
+                closeSettingsModal();
+            }
+        });
+
         // Phase 4: Thumbnail panel and view mode
         document.getElementById('thumbnailToggle').addEventListener('click', toggleThumbnailPanel);
         document.getElementById('pageModeBtn').addEventListener('click', () => setViewMode('page'));
@@ -3886,6 +4343,7 @@
         setTool('move');
         updateUI();
         loadAutoSave();
+        loadShortcutsFromStorage(); // Load custom shortcuts
 
         // Save initial state
         saveState();
