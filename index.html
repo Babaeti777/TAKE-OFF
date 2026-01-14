@@ -1054,6 +1054,11 @@
                                 <h3>System</h3>
                                 <div class="shortcut-list" id="systemShortcuts"></div>
                             </div>
+
+                            <div class="shortcut-section">
+                                <h3>Mouse Controls</h3>
+                                <div class="shortcut-list" id="mouseShortcuts"></div>
+                            </div>
                         </div>
                         <div class="settings-footer">
                             <button class="btn-danger" id="resetShortcutsBtn">Reset to Defaults</button>
@@ -1104,11 +1109,8 @@
                             <li>• Cancel: <kbd>Esc</kbd></li>
                         </ul>
                         <h3 style="margin-top: 0.75rem;">⌨️ Shortcuts:</h3>
-                        <ul style="margin-left: 1rem; list-style: none;">
-                            <li>• <kbd>M</kbd> Pan  <kbd>L</kbd> Linear  <kbd>A</kbd> Area  <kbd>Q</kbd> Count</li>
-                            <li>• <kbd>Ctrl+S</kbd> Save  <kbd>Ctrl+O</kbd> Load Project</li>
-                            <li>• <kbd>Ctrl+Z</kbd> Undo  <kbd>Ctrl+Y</kbd> Redo</li>
-                            <li>• <kbd>E</kbd> Edit  <kbd>+/-</kbd> or 🖱️ Wheel to Zoom</li>
+                        <ul id="shortcutsReference" style="margin-left: 1rem; list-style: none; font-size: 0.8rem;">
+                            <!-- Dynamically populated with current shortcuts -->
                         </ul>
                     </div>
                     
@@ -1176,6 +1178,12 @@
             system: [
                 { id: 'save-project', label: 'Save Project', key: 's', action: 'saveProject', ctrl: true },
                 { id: 'load-project', label: 'Load Project', key: 'o', action: 'loadProject', ctrl: true }
+            ],
+            mouse: [
+                { id: 'pan-drag', label: 'Pan/Move Canvas', mouse: 'left', action: 'panDrag', description: 'Left Click + Drag in Move mode' },
+                { id: 'middle-pan', label: 'Pan with Middle Mouse', mouse: 'middle', action: 'middlePan', description: 'Middle Mouse Button + Drag' },
+                { id: 'ctrl-zoom', label: 'Zoom', mouse: 'wheel', ctrl: true, action: 'wheelZoom', description: 'Ctrl + Scroll Wheel' },
+                { id: 'scroll-page', label: 'Scroll/Change Page', mouse: 'wheel', action: 'wheelScroll', description: 'Scroll Wheel (without Ctrl)' }
             ]
         };
 
@@ -1670,36 +1678,6 @@
         canvas.addEventListener('mousemove', handleMouseMove);
         canvas.addEventListener('mouseup', handleMouseUp);
         canvas.addEventListener('mouseleave', handleMouseUp);
-        canvas.addEventListener('dblclick', handleDoubleClick);
-
-        function handleDoubleClick(e) {
-            if (!state.image) return;
-
-            // Don't trigger edit mode when drawing polygons or polylines
-            if (state.drawing || state.polygonPoints.length > 0 || state.polylinePoints.length > 0) {
-                return;
-            }
-
-            const { canvasX, canvasY } = getEventCanvasPosition(e);
-
-            // Find if we clicked on a measurement
-            const handle = findHandle(canvasX, canvasY);
-            if (handle) {
-                // Enter edit mode if not already
-                if (!state.editMode) {
-                    state.editMode = true;
-                    state.drawing = false;
-                    state.startPoint = null;
-                    setTool('move');
-                }
-                // Select the clicked measurement
-                state.activeMeasurement = handle.index;
-                state.activeHandle = handle.handle;
-                updateEditModeUI();
-                draw();
-                showToast('📝 Measurement selected for editing', 'info');
-            }
-        }
 
         function getEventCanvasPosition(e) {
             const rect = canvas.getBoundingClientRect();
@@ -1884,6 +1862,19 @@
             if (!state.image) return;
 
             const { pixelX, pixelY, canvasX, canvasY } = getEventCanvasPosition(e);
+
+            // Middle mouse button (button === 1) always pans
+            if (e.button === 1) {
+                e.preventDefault(); // Prevent default middle-click behavior
+                state.dragging = true;
+                state.dragStart = { x: pixelX, y: pixelY };
+                state.originalOffset = { ...state.offset };
+                canvas.style.cursor = 'grabbing';
+                return;
+            }
+
+            // Only handle left mouse button (button === 0) for tools
+            if (e.button !== 0) return;
 
             if (state.editMode) {
                 const handle = findHandle(canvasX, canvasY);
@@ -2127,6 +2118,7 @@
 
             if (state.dragging) {
                 state.dragging = false;
+                canvas.style.cursor = state.tool === 'move' ? 'grab' : 'crosshair';
             } else if (state.drawing && state.startPoint && state.tool === 'linear') {
                 // Only handle mouseUp for linear measurements
                 const { canvasX, canvasY } = getEventCanvasPosition(e);
@@ -3500,6 +3492,9 @@
                     shortcuts = JSON.parse(JSON.stringify(DEFAULT_SHORTCUTS));
                 }
             }
+            // Update button tooltips and sidebar reference after loading shortcuts
+            updateButtonTooltips();
+            updateShortcutsReference();
         }
 
         function saveShortcutsToStorage() {
@@ -3510,10 +3505,25 @@
             shortcuts = JSON.parse(JSON.stringify(DEFAULT_SHORTCUTS));
             saveShortcutsToStorage();
             populateShortcutLists();
+            updateButtonTooltips();
+            updateShortcutsReference();
             showToast('⚙️ Shortcuts reset to defaults', 'success');
         }
 
-        function getKeyDisplayName(key, ctrl = false) {
+        function getKeyDisplayName(key, ctrl = false, mouse = null) {
+            // Handle mouse shortcuts
+            if (mouse) {
+                const mouseMap = {
+                    'left': '🖱️ Left Click',
+                    'middle': '🖱️ Middle Click',
+                    'right': '🖱️ Right Click',
+                    'wheel': '🖱️ Scroll Wheel'
+                };
+                const mouseDisplay = mouseMap[mouse] || '🖱️ ' + mouse;
+                return ctrl ? `Ctrl + ${mouseDisplay}` : mouseDisplay;
+            }
+
+            // Handle keyboard shortcuts
             const keyMap = {
                 ' ': 'Space',
                 'Escape': 'Esc',
@@ -3567,6 +3577,14 @@
                 const item = createShortcutItem(shortcut);
                 systemContainer.appendChild(item);
             });
+
+            // Mouse Controls
+            const mouseContainer = document.getElementById('mouseShortcuts');
+            mouseContainer.innerHTML = '';
+            shortcuts.mouse.forEach(shortcut => {
+                const item = createShortcutItem(shortcut);
+                mouseContainer.appendChild(item);
+            });
         }
 
         function createShortcutItem(shortcut) {
@@ -3577,18 +3595,30 @@
             label.className = 'shortcut-label';
             label.textContent = shortcut.label;
 
-            const keyBtn = document.createElement('button');
-            keyBtn.className = 'shortcut-key';
-            keyBtn.textContent = getKeyDisplayName(shortcut.key, shortcut.ctrl);
-            keyBtn.dataset.shortcutId = shortcut.id;
-            keyBtn.dataset.action = shortcut.action;
+            // Mouse shortcuts display description instead of editable key
+            if (shortcut.mouse) {
+                const desc = document.createElement('span');
+                desc.className = 'shortcut-key';
+                desc.style.cursor = 'default';
+                desc.style.opacity = '0.8';
+                desc.textContent = shortcut.description || getKeyDisplayName(null, shortcut.ctrl, shortcut.mouse);
+                item.appendChild(label);
+                item.appendChild(desc);
+            } else {
+                // Keyboard shortcuts are editable
+                const keyBtn = document.createElement('button');
+                keyBtn.className = 'shortcut-key';
+                keyBtn.textContent = getKeyDisplayName(shortcut.key, shortcut.ctrl);
+                keyBtn.dataset.shortcutId = shortcut.id;
+                keyBtn.dataset.action = shortcut.action;
 
-            keyBtn.addEventListener('click', () => {
-                startEditingShortcut(keyBtn, shortcut);
-            });
+                keyBtn.addEventListener('click', () => {
+                    startEditingShortcut(keyBtn, shortcut);
+                });
 
-            item.appendChild(label);
-            item.appendChild(keyBtn);
+                item.appendChild(label);
+                item.appendChild(keyBtn);
+            }
 
             return item;
         }
@@ -3680,8 +3710,186 @@
 
         function saveSettings() {
             saveShortcutsToStorage();
+            updateButtonTooltips(); // Update tooltips with new shortcuts
+            updateShortcutsReference(); // Update sidebar shortcuts reference
             closeSettingsModal();
             showToast('⚙️ Settings saved', 'success');
+        }
+
+        // Update the shortcuts reference panel in sidebar
+        function updateShortcutsReference() {
+            const container = document.getElementById('shortcutsReference');
+            if (!container) return;
+
+            // Helper to find shortcut by action
+            const findShortcut = (action) => {
+                for (const category of Object.values(shortcuts)) {
+                    const found = category.find(s => s.action === action);
+                    if (found) return found;
+                }
+                return null;
+            };
+
+            // Helper to create kbd element
+            const kbd = (text) => `<kbd style="background: var(--bg-tertiary); padding: 0.125rem 0.375rem; border-radius: 3px; font-size: 0.75rem;">${text}</kbd>`;
+
+            const items = [];
+
+            // Mode shortcuts
+            const takeoffKey = findShortcut('takeoffMode');
+            const readerKey = findShortcut('readerMode');
+            if (takeoffKey || readerKey) {
+                const parts = [];
+                if (takeoffKey) parts.push(`${kbd(getKeyDisplayName(takeoffKey.key, takeoffKey.ctrl))} Takeoff`);
+                if (readerKey) parts.push(`${kbd(getKeyDisplayName(readerKey.key, readerKey.ctrl))} Reader`);
+                items.push(`<li>• ${parts.join('  ')}</li>`);
+            }
+
+            // Tool shortcuts
+            const linearKey = findShortcut('linearTool');
+            const polylineKey = findShortcut('polylineTool');
+            const areaKey = findShortcut('areaTool');
+            const countKey = findShortcut('countTool');
+            const toolParts = [];
+            if (linearKey) toolParts.push(`${kbd(getKeyDisplayName(linearKey.key, linearKey.ctrl))} Linear`);
+            if (polylineKey) toolParts.push(`${kbd(getKeyDisplayName(polylineKey.key, polylineKey.ctrl))} Polyline`);
+            if (areaKey) toolParts.push(`${kbd(getKeyDisplayName(areaKey.key, areaKey.ctrl))} Area`);
+            if (countKey) toolParts.push(`${kbd(getKeyDisplayName(countKey.key, countKey.ctrl))} Count`);
+            if (toolParts.length > 0) {
+                items.push(`<li>• ${toolParts.join('  ')}</li>`);
+            }
+
+            // Edit and actions
+            const editKey = findShortcut('editMode');
+            const deleteKey = findShortcut('delete');
+            if (editKey || deleteKey) {
+                const parts = [];
+                if (editKey) parts.push(`${kbd(getKeyDisplayName(editKey.key, editKey.ctrl))} Edit`);
+                if (deleteKey) parts.push(`${kbd(getKeyDisplayName(deleteKey.key, deleteKey.ctrl))} Delete`);
+                items.push(`<li>• ${parts.join('  ')}</li>`);
+            }
+
+            // Zoom shortcuts
+            const zoomInKey = findShortcut('zoomIn');
+            const zoomOutKey = findShortcut('zoomOut');
+            if (zoomInKey || zoomOutKey) {
+                const parts = [];
+                if (zoomInKey) parts.push(`${kbd(getKeyDisplayName(zoomInKey.key, zoomInKey.ctrl))}`);
+                if (zoomOutKey) parts.push(`${kbd(getKeyDisplayName(zoomOutKey.key, zoomOutKey.ctrl))}`);
+                items.push(`<li>• ${parts.join('/')} Zoom  ${kbd('Ctrl+Scroll')} Zoom</li>`);
+            }
+
+            // System shortcuts
+            const saveKey = findShortcut('saveProject');
+            const loadKey = findShortcut('loadProject');
+            if (saveKey || loadKey) {
+                const parts = [];
+                if (saveKey) parts.push(`${kbd(getKeyDisplayName(saveKey.key, saveKey.ctrl))} Save`);
+                if (loadKey) parts.push(`${kbd(getKeyDisplayName(loadKey.key, loadKey.ctrl))} Load`);
+                items.push(`<li>• ${parts.join('  ')}</li>`);
+            }
+
+            // Undo/Redo (hardcoded)
+            items.push(`<li>• ${kbd('Ctrl+Z')} Undo  ${kbd('Ctrl+Y')} Redo</li>`);
+
+            // Mouse controls
+            items.push(`<li>• 🖱️ ${kbd('Middle Click')} Pan  ${kbd('Scroll')} Pages</li>`);
+
+            container.innerHTML = items.join('');
+        }
+
+        // Update button tooltips to reflect current shortcuts
+        function updateButtonTooltips() {
+            // Helper to find shortcut by action
+            const findShortcut = (action) => {
+                for (const category of Object.values(shortcuts)) {
+                    const found = category.find(s => s.action === action);
+                    if (found) return found;
+                }
+                return null;
+            };
+
+            // Update mode buttons
+            const takeoffShortcut = findShortcut('takeoffMode');
+            if (takeoffShortcut) {
+                const key = getKeyDisplayName(takeoffShortcut.key, takeoffShortcut.ctrl);
+                document.getElementById('takeoffModeBtn').title = `Takeoff Mode - Measurement tools active (${key})`;
+                document.getElementById('takeoffModeBtn').setAttribute('aria-label', `Takeoff Mode (${key})`);
+            }
+
+            const readerShortcut = findShortcut('readerMode');
+            if (readerShortcut) {
+                const key = getKeyDisplayName(readerShortcut.key, readerShortcut.ctrl);
+                document.getElementById('readerModeBtn').title = `Reader Mode - View only (${key})`;
+                document.getElementById('readerModeBtn').setAttribute('aria-label', `Reader Mode (${key})`);
+            }
+
+            // Update tool buttons
+            const linearShortcut = findShortcut('linearTool');
+            if (linearShortcut) {
+                const key = getKeyDisplayName(linearShortcut.key, linearShortcut.ctrl);
+                document.getElementById('linearBtn').title = `Linear (${key})`;
+                document.getElementById('linearBtn').setAttribute('aria-label', `Linear tool (${key})`);
+            }
+
+            const polylineShortcut = findShortcut('polylineTool');
+            if (polylineShortcut) {
+                const key = getKeyDisplayName(polylineShortcut.key, polylineShortcut.ctrl);
+                document.getElementById('polylineBtn').title = `Continuous Linear (${key})`;
+                document.getElementById('polylineBtn').setAttribute('aria-label', `Continuous Linear tool (${key})`);
+            }
+
+            const areaShortcut = findShortcut('areaTool');
+            if (areaShortcut) {
+                const key = getKeyDisplayName(areaShortcut.key, areaShortcut.ctrl);
+                document.getElementById('areaBtn').title = `Area (${key})`;
+                document.getElementById('areaBtn').setAttribute('aria-label', `Area tool (${key})`);
+            }
+
+            const countShortcut = findShortcut('countTool');
+            if (countShortcut) {
+                const key = getKeyDisplayName(countShortcut.key, countShortcut.ctrl);
+                document.getElementById('countBtn').title = `Count (${key})`;
+                document.getElementById('countBtn').setAttribute('aria-label', `Count tool (${key})`);
+            }
+
+            // Update action buttons
+            const editShortcut = findShortcut('editMode');
+            if (editShortcut) {
+                const key = getKeyDisplayName(editShortcut.key, editShortcut.ctrl);
+                document.getElementById('editBtn').title = `Edit (${key})`;
+                document.getElementById('editBtn').setAttribute('aria-label', `Edit points (${key})`);
+            }
+
+            // Update zoom buttons
+            const zoomInShortcut = findShortcut('zoomIn');
+            if (zoomInShortcut) {
+                const key = getKeyDisplayName(zoomInShortcut.key, zoomInShortcut.ctrl);
+                document.getElementById('zoomInBtn').title = `Zoom In (${key})`;
+                document.getElementById('zoomInBtn').setAttribute('aria-label', `Zoom in (${key})`);
+            }
+
+            const zoomOutShortcut = findShortcut('zoomOut');
+            if (zoomOutShortcut) {
+                const key = getKeyDisplayName(zoomOutShortcut.key, zoomOutShortcut.ctrl);
+                document.getElementById('zoomOutBtn').title = `Zoom Out (${key})`;
+                document.getElementById('zoomOutBtn').setAttribute('aria-label', `Zoom out (${key})`);
+            }
+
+            // Update system buttons
+            const saveShortcut = findShortcut('saveProject');
+            if (saveShortcut) {
+                const key = getKeyDisplayName(saveShortcut.key, saveShortcut.ctrl);
+                document.getElementById('saveProjectBtn').title = `Save Project (${key})`;
+                document.getElementById('saveProjectBtn').setAttribute('aria-label', `Save project (${key})`);
+            }
+
+            const loadShortcut = findShortcut('loadProject');
+            if (loadShortcut) {
+                const key = getKeyDisplayName(loadShortcut.key, loadShortcut.ctrl);
+                document.getElementById('loadProjectBtn').title = `Load Project (${key})`;
+                document.getElementById('loadProjectBtn').setAttribute('aria-label', `Load project (${key})`);
+            }
         }
 
         // Helper function to find shortcut by key
