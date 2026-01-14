@@ -1094,6 +1094,42 @@
                         <button class="btn-secondary" id="bulkDeselectBtn">✖ Clear</button>
                     </div>
 
+                    <!-- Measurement Filters -->
+                    <div class="measurement-filters" style="background: var(--bg-tertiary); padding: 0.75rem; border-radius: 4px; margin-bottom: 1rem;">
+                        <h3 style="margin: 0 0 0.5rem 0; font-size: 0.875rem; color: var(--text-primary);">🔍 Filter Measurements</h3>
+                        <input
+                            type="text"
+                            id="filterSearch"
+                            placeholder="Search by label or description..."
+                            style="width: 100%; padding: 0.375rem; margin-bottom: 0.5rem; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; font-size: 0.875rem;"
+                        />
+                        <div style="display: flex; gap: 0.5rem;">
+                            <select
+                                id="filterType"
+                                style="flex: 1; padding: 0.375rem; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; font-size: 0.875rem;"
+                            >
+                                <option value="all">All Types</option>
+                                <option value="linear">Linear</option>
+                                <option value="polyline">Polyline</option>
+                                <option value="area">Area</option>
+                                <option value="count">Count</option>
+                            </select>
+                            <select
+                                id="filterCategory"
+                                style="flex: 1; padding: 0.375rem; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); border-radius: 4px; font-size: 0.875rem;"
+                            >
+                                <option value="all">All Categories</option>
+                                <!-- Dynamically populated -->
+                            </select>
+                        </div>
+                        <button
+                            id="clearFiltersBtn"
+                            style="width: 100%; margin-top: 0.5rem; padding: 0.25rem; background: transparent; border: 1px solid var(--border-color); color: var(--text-secondary); border-radius: 4px; font-size: 0.75rem; cursor: pointer;"
+                        >
+                            Clear Filters
+                        </button>
+                    </div>
+
                     <div class="instructions">
                         <h3>🚀 Quick Start:</h3>
                         <ol>
@@ -1231,7 +1267,12 @@
             zoomTimeout: null,              // Phase 4: Timeout for zoom quality upgrade
             hoveredMeasurement: null,       // Phase 4: Currently hovered measurement index
             hoveredHandle: null,            // Phase 4: Currently hovered handle
-            mode: 'takeoff'                 // Current mode: 'reader' or 'takeoff'
+            mode: 'takeoff',                // Current mode: 'reader' or 'takeoff'
+            filters: {                      // Measurement filters
+                search: '',
+                type: 'all',
+                category: 'all'
+            }
         };
 
         // Undo/Redo state
@@ -1679,6 +1720,12 @@
         canvas.addEventListener('mouseup', handleMouseUp);
         canvas.addEventListener('mouseleave', handleMouseUp);
 
+        // Prevent context menu on canvas (especially for middle mouse button)
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            return false;
+        });
+
         function getEventCanvasPosition(e) {
             const rect = canvas.getBoundingClientRect();
             const scaleX = canvas.width / rect.width;
@@ -1999,7 +2046,10 @@
                     y: state.originalOffset.y + (pixelY - state.dragStart.y)
                 };
                 draw();
-            } else if (state.drawing) {
+                return;
+            }
+
+            if (state.drawing) {
                 draw();
                 drawPreview(canvasX, canvasY);
             } else {
@@ -2190,6 +2240,78 @@
                 // If measurement has no page property (old data), show on current page
                 return m.page === undefined || m.page === state.currentPage;
             });
+        }
+
+        // Apply filters to measurements
+        function applyFiltersToMeasurements(measurements) {
+            return measurements.filter(m => {
+                // Type filter
+                if (state.filters.type !== 'all' && m.type !== state.filters.type) {
+                    return false;
+                }
+
+                // Category filter
+                if (state.filters.category !== 'all') {
+                    const category = (m.category || '').trim();
+                    if (state.filters.category === 'uncategorized') {
+                        if (category !== '') return false;
+                    } else {
+                        if (category !== state.filters.category) return false;
+                    }
+                }
+
+                // Search filter
+                if (state.filters.search) {
+                    const search = state.filters.search.toLowerCase();
+                    const label = (m.label || '').toLowerCase();
+                    const description = (m.description || '').toLowerCase();
+                    if (!label.includes(search) && !description.includes(search)) {
+                        return false;
+                    }
+                }
+
+                return true;
+            });
+        }
+
+        // Get unique categories from measurements
+        function getUniqueCategories() {
+            const categories = new Set();
+            state.measurements.forEach(m => {
+                const category = (m.category || '').trim();
+                if (category) {
+                    categories.add(category);
+                }
+            });
+            return Array.from(categories).sort();
+        }
+
+        // Populate category filter dropdown
+        function populateCategoryFilter() {
+            const categorySelect = document.getElementById('filterCategory');
+            const categories = getUniqueCategories();
+
+            let options = '<option value="all">All Categories</option>';
+            categories.forEach(cat => {
+                options += `<option value="${cat}">${cat}</option>`;
+            });
+            options += '<option value="uncategorized">Uncategorized</option>';
+
+            categorySelect.innerHTML = options;
+            categorySelect.value = state.filters.category;
+        }
+
+        // Clear all filters
+        function clearFilters() {
+            state.filters.search = '';
+            state.filters.type = 'all';
+            state.filters.category = 'all';
+
+            document.getElementById('filterSearch').value = '';
+            document.getElementById('filterType').value = 'all';
+            document.getElementById('filterCategory').value = 'all';
+
+            updateUI();
         }
 
         function draw() {
@@ -4156,15 +4278,25 @@
             document.getElementById('zoomLevel').textContent = (state.scale * 100).toFixed(0);
             document.getElementById('scaleValue').textContent = state.scaleFactor.toFixed(4);
 
-            // Phase 4: Show measurements for current page only
-            const pageMeasurements = getCurrentPageMeasurements();
+            // Update category filter dropdown
+            populateCategoryFilter();
+
+            // Phase 4: Show measurements for current page only, with filters applied
+            const pageMeasurements = applyFiltersToMeasurements(getCurrentPageMeasurements());
+            const allPageMeasurements = getCurrentPageMeasurements();
             const pageIndicator = state.pdfDoc && state.totalPages > 1 ? ` (Page ${state.currentPage}/${state.totalPages})` : '';
-            document.getElementById('measurementCount').textContent = pageMeasurements.length + pageIndicator;
+            const filterIndicator = (pageMeasurements.length !== allPageMeasurements.length) ? ` (${pageMeasurements.length} of ${allPageMeasurements.length} shown)` : '';
+            document.getElementById('measurementCount').textContent = pageMeasurements.length + pageIndicator + filterIndicator;
 
             const list = document.getElementById('measurementList');
 
             if (pageMeasurements.length === 0) {
-                list.innerHTML = '<div class="empty-measurements">No measurements on this page<br><span style="font-size: 0.75rem;">Select a tool and draw on canvas</span></div>';
+                // Check if it's because of filters or truly empty
+                if (allPageMeasurements.length === 0) {
+                    list.innerHTML = '<div class="empty-measurements">No measurements on this page<br><span style="font-size: 0.75rem;">Select a tool and draw on canvas</span></div>';
+                } else {
+                    list.innerHTML = '<div class="empty-measurements">No measurements match filters<br><span style="font-size: 0.75rem;">Try clearing filters or adjusting criteria</span></div>';
+                }
             } else {
                 // Group measurements by category
                 const categories = {};
@@ -4499,6 +4631,24 @@
         document.getElementById('bulkColorBtn').addEventListener('click', bulkChangeColor);
         document.getElementById('bulkCategoryBtn').addEventListener('click', bulkChangeCategory);
         document.getElementById('bulkDeselectBtn').addEventListener('click', deselectAllMeasurements);
+
+        // Measurement filters
+        document.getElementById('filterSearch').addEventListener('input', (e) => {
+            state.filters.search = e.target.value;
+            updateUI();
+        });
+
+        document.getElementById('filterType').addEventListener('change', (e) => {
+            state.filters.type = e.target.value;
+            updateUI();
+        });
+
+        document.getElementById('filterCategory').addEventListener('change', (e) => {
+            state.filters.category = e.target.value;
+            updateUI();
+        });
+
+        document.getElementById('clearFiltersBtn').addEventListener('click', clearFilters);
 
         // App mode toggle
         document.getElementById('takeoffModeBtn').addEventListener('click', () => setAppMode('takeoff'));
