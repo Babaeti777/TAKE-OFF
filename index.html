@@ -3486,7 +3486,16 @@
             const saved = localStorage.getItem('takeoff-shortcuts');
             if (saved) {
                 try {
-                    shortcuts = JSON.parse(saved);
+                    const savedShortcuts = JSON.parse(saved);
+                    // Merge saved shortcuts with defaults to ensure all categories exist
+                    shortcuts = JSON.parse(JSON.stringify(DEFAULT_SHORTCUTS)); // Start with defaults
+
+                    // Override with saved values for existing categories
+                    for (const category in savedShortcuts) {
+                        if (shortcuts[category]) {
+                            shortcuts[category] = savedShortcuts[category];
+                        }
+                    }
                 } catch (e) {
                     console.error('Failed to load shortcuts:', e);
                     shortcuts = JSON.parse(JSON.stringify(DEFAULT_SHORTCUTS));
@@ -3541,50 +3550,62 @@
             // Mode Switching
             const modeSwitchingContainer = document.getElementById('modeSwitchingShortcuts');
             modeSwitchingContainer.innerHTML = '';
-            shortcuts.modeSwitching.forEach(shortcut => {
-                const item = createShortcutItem(shortcut);
-                modeSwitchingContainer.appendChild(item);
-            });
+            if (shortcuts.modeSwitching) {
+                shortcuts.modeSwitching.forEach(shortcut => {
+                    const item = createShortcutItem(shortcut);
+                    modeSwitchingContainer.appendChild(item);
+                });
+            }
 
             // Measurement Tools
             const measurementToolsContainer = document.getElementById('measurementToolsShortcuts');
             measurementToolsContainer.innerHTML = '';
-            shortcuts.measurementTools.forEach(shortcut => {
-                const item = createShortcutItem(shortcut);
-                measurementToolsContainer.appendChild(item);
-            });
+            if (shortcuts.measurementTools) {
+                shortcuts.measurementTools.forEach(shortcut => {
+                    const item = createShortcutItem(shortcut);
+                    measurementToolsContainer.appendChild(item);
+                });
+            }
 
             // Actions
             const actionsContainer = document.getElementById('actionsShortcuts');
             actionsContainer.innerHTML = '';
-            shortcuts.actions.forEach(shortcut => {
-                const item = createShortcutItem(shortcut);
-                actionsContainer.appendChild(item);
-            });
+            if (shortcuts.actions) {
+                shortcuts.actions.forEach(shortcut => {
+                    const item = createShortcutItem(shortcut);
+                    actionsContainer.appendChild(item);
+                });
+            }
 
             // Zoom & Navigation
             const zoomContainer = document.getElementById('zoomShortcuts');
             zoomContainer.innerHTML = '';
-            shortcuts.zoom.forEach(shortcut => {
-                const item = createShortcutItem(shortcut);
-                zoomContainer.appendChild(item);
-            });
+            if (shortcuts.zoom) {
+                shortcuts.zoom.forEach(shortcut => {
+                    const item = createShortcutItem(shortcut);
+                    zoomContainer.appendChild(item);
+                });
+            }
 
             // System
             const systemContainer = document.getElementById('systemShortcuts');
             systemContainer.innerHTML = '';
-            shortcuts.system.forEach(shortcut => {
-                const item = createShortcutItem(shortcut);
-                systemContainer.appendChild(item);
-            });
+            if (shortcuts.system) {
+                shortcuts.system.forEach(shortcut => {
+                    const item = createShortcutItem(shortcut);
+                    systemContainer.appendChild(item);
+                });
+            }
 
             // Mouse Controls
             const mouseContainer = document.getElementById('mouseShortcuts');
             mouseContainer.innerHTML = '';
-            shortcuts.mouse.forEach(shortcut => {
-                const item = createShortcutItem(shortcut);
-                mouseContainer.appendChild(item);
-            });
+            if (shortcuts.mouse) {
+                shortcuts.mouse.forEach(shortcut => {
+                    const item = createShortcutItem(shortcut);
+                    mouseContainer.appendChild(item);
+                });
+            }
         }
 
         function createShortcutItem(shortcut) {
