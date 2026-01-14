@@ -1281,6 +1281,9 @@
             currentIndex: -1,
             maxStates: 50
         };
+
+        // Render lock to prevent race conditions
+        let renderingInProgress = false;
         
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
@@ -1567,6 +1570,14 @@
             try {
                 if (!state.pdfDoc) return;
 
+                // Prevent concurrent renders that could cause measurement scaling issues
+                if (renderingInProgress) {
+                    console.log('Render already in progress, skipping...');
+                    return;
+                }
+
+                renderingInProgress = true;
+
                 // Store old dimensions before rendering
                 const oldWidth = state.imageWidth;
                 const oldHeight = state.imageHeight;
@@ -1605,23 +1616,27 @@
                         state.baseImageHeight = newHeight;
                     } else {
                         // Scale measurements from base dimensions when quality changes
-                        // This prevents cumulative scaling drift
+                        // ALWAYS scale from base to new, never from old to new (prevents drift)
                         if (state.measurements.length > 0 && pageNumber === state.currentPage) {
                             const baseWidth = state.baseImageWidth;
                             const baseHeight = state.baseImageHeight;
 
                             // Only scale if dimensions actually changed from base
                             if (baseWidth !== newWidth || baseHeight !== newHeight) {
-                                // First, scale back to base if needed
+                                // CRITICAL FIX: First scale ALL measurements back to base reference
+                                // This ensures we're always working from a consistent reference point
                                 if (oldWidth !== baseWidth || oldHeight !== baseHeight) {
+                                    // Scale back from current size to base size
                                     scaleMeasurements(oldWidth, oldHeight, baseWidth, baseHeight);
                                 }
-                                // Then scale to new size
+
+                                // Now scale from base to new size
                                 scaleMeasurements(baseWidth, baseHeight, newWidth, newHeight);
                             }
                         }
                     }
 
+                    // Set the image and dimensions AFTER all scaling is complete
                     state.image = img;
                     state.imageWidth = newWidth;
                     state.imageHeight = newHeight;
@@ -1638,10 +1653,14 @@
                     updateUI();
                     draw();
                     enableButtons();
+
+                    // Release render lock after completion
+                    renderingInProgress = false;
                 };
                 img.src = pdfCanvas.toDataURL();
 
             } catch (error) {
+                renderingInProgress = false; // Release lock on error
                 console.error('Error rendering PDF page:', error);
                 alert('⚠️ Error Rendering PDF Page\n\n' + error.message + '\n\n' +
                       '💡 This page may be corrupted or too complex.\n' +
